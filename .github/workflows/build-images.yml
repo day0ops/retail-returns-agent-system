@@ -1,0 +1,86 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      force_all:
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write   # required for GCP Workload Identity Federation
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      go-components: ${{ steps.filter.outputs.changes }}
+      ui-changed: ${{ steps.filter.outputs.ui }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            order-db: 'mcp-servers/order-db/**'
+            support-triage: 'agents/support-triage/**'
+            ui: 'ui/**'
+
+  lint-test-go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version-file: 'go.work' }
+      - run: gofmt -l . | tee /tmp/fmtdiff && [ ! -s /tmp/fmtdiff ]
+      - uses: golangci/golangci-lint-action@v6
+        with: { version: latest }
+      # go.work's `use` directives are workspace modules, not a single module tree, so
+      # a bare `./...` from the repo root doesn't resolve -- list each module path
+      # explicitly (kept in sync with go.work by Task 6 as components are added).
+      - run: go build ./agents/support-triage/... ./mcp-servers/order-db/...
+      - run: go test ./agents/support-triage/... ./mcp-servers/order-db/... -v
+
+  lint-test-ui:
+    if: needs.changes.outputs.ui-changed == 'true' || github.event.inputs.force_all == 'true'
+    needs: changes
+    runs-on: ubuntu-latest
+    defaults:
+      run: { working-directory: ui }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: 'npm', cache-dependency-path: ui/package-lock.json }
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm test
+
+  build:
+    needs: [changes, lint-test-go]
+    if: needs.changes.outputs.go-components != '[]' || github.event.inputs.force_all == 'true'
+    strategy:
+      matrix:
+        component: ${{ fromJson(needs.changes.outputs.go-components) }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - run: gcloud auth configure-docker australia-southeast1-docker.pkg.dev
+      - run: |
+          set -euo pipefail
+          DIR=$(find agents mcp-servers -maxdepth 1 -type d -name "${{ matrix.component }}")
+          IMG="australia-southeast1-docker.pkg.dev/field-engineering-apac/kasunt/retail-returns-${{ matrix.component }}"
+          docker build -t "$IMG:${{ github.sha }}" -t "$IMG:latest" "$DIR"
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            docker push "$IMG:${{ github.sha }}"
+            docker push "$IMG:latest"
+          fi
