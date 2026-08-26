@@ -17,7 +17,7 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     outputs:
-      go-components: ${{ steps.filter.outputs.changes }}
+      go-components: ${{ steps.components.outputs.result }}
       ui-changed: ${{ steps.filter.outputs.ui }}
     steps:
       - uses: actions/checkout@v4
@@ -28,6 +28,20 @@ jobs:
             order-db: 'mcp-servers/order-db/**'
             support-triage: 'agents/support-triage/**'
             ui: 'ui/**'
+      # workflow_dispatch's force_all rebuilds every Go component regardless of what
+      # changed (for cutting a demo checkpoint); otherwise use paths-filter's diff.
+      # ALL_GO_COMPONENTS is kept in sync with the filters above as components are added.
+      - id: components
+        env:
+          ALL_GO_COMPONENTS: '["order-db","support-triage"]'
+          FORCE_ALL: ${{ github.event.inputs.force_all == 'true' }}
+          CHANGED: ${{ steps.filter.outputs.changes }}
+        run: |
+          if [ "$FORCE_ALL" = "true" ]; then
+            echo "result=$ALL_GO_COMPONENTS" >> "$GITHUB_OUTPUT"
+          else
+            echo "result=$CHANGED" >> "$GITHUB_OUTPUT"
+          fi
 
   lint-test-go:
     runs-on: ubuntu-latest
