@@ -114,9 +114,10 @@ jobs:
           set -euo pipefail
           DIR=$(find agents mcp-servers -maxdepth 1 -type d -name "${{ matrix.component }}")
           IMG="australia-southeast1-docker.pkg.dev/field-engineering-apac/kasunt/retail-returns-${{ matrix.component }}"
-          docker build -t "$IMG:${{ github.sha }}" -t "$IMG:latest" "$DIR"
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          docker build -t "$IMG:$SHORT_SHA" -t "$IMG:latest" "$DIR"
           if [ "${{ github.event_name }}" != "pull_request" ]; then
-            docker push "$IMG:${{ github.sha }}"
+            docker push "$IMG:$SHORT_SHA"
             docker push "$IMG:latest"
           fi
 
@@ -136,8 +137,9 @@ jobs:
       - run: |
           set -euo pipefail
           IMG="australia-southeast1-docker.pkg.dev/field-engineering-apac/kasunt/retail-returns-ui"
-          docker build -t "$IMG:${{ github.sha }}" -t "$IMG:latest" ui
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          docker build -t "$IMG:$SHORT_SHA" -t "$IMG:latest" ui
           if [ "${{ github.event_name }}" != "pull_request" ]; then
-            docker push "$IMG:${{ github.sha }}"
+            docker push "$IMG:$SHORT_SHA"
             docker push "$IMG:latest"
           fi
