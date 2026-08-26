@@ -8,6 +8,10 @@ on:
       force_all:
         type: boolean
         default: false
+      semver_tag:
+        description: 'Optional additional tag (e.g. v0.1.0) to cut a known-good checkpoint. Implies force_all.'
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -43,7 +47,7 @@ jobs:
           ALL_GO_COMPONENTS: >-
             ["order-db","payment","shipping","inventory","fraud-scoring",
             "support-triage","order-lookup","fraud-check","refund-approval"]
-          FORCE_ALL: ${{ github.event.inputs.force_all == 'true' }}
+          FORCE_ALL: ${{ github.event.inputs.force_all == 'true' || github.event.inputs.semver_tag != '' }}
           CHANGED: ${{ steps.filter.outputs.changes }}
         run: |
           if [ "$FORCE_ALL" = "true" ]; then
@@ -79,7 +83,7 @@ jobs:
           ./mcp-servers/shipping/... ./mcp-servers/inventory/... ./mcp-servers/fraud-scoring/... -v
 
   lint-test-ui:
-    if: needs.changes.outputs.ui-changed == 'true' || github.event.inputs.force_all == 'true'
+    if: needs.changes.outputs.ui-changed == 'true' || github.event.inputs.force_all == 'true' || github.event.inputs.semver_tag != ''
     needs: changes
     runs-on: ubuntu-latest
     defaults:
@@ -96,7 +100,7 @@ jobs:
 
   build:
     needs: [changes, lint-test-go]
-    if: needs.changes.outputs.go-components != '[]' || github.event.inputs.force_all == 'true'
+    if: needs.changes.outputs.go-components != '[]' || github.event.inputs.force_all == 'true' || github.event.inputs.semver_tag != ''
     strategy:
       matrix:
         component: ${{ fromJson(needs.changes.outputs.go-components) }}
@@ -115,15 +119,23 @@ jobs:
           DIR=$(find agents mcp-servers -maxdepth 1 -type d -name "${{ matrix.component }}")
           IMG="australia-southeast1-docker.pkg.dev/field-engineering-apac/kasunt/retail-returns-${{ matrix.component }}"
           SHORT_SHA="${GITHUB_SHA:0:7}"
-          docker build -t "$IMG:$SHORT_SHA" -t "$IMG:latest" "$DIR"
+          SEMVER_TAG="${{ github.event.inputs.semver_tag }}"
+          TAGS=(-t "$IMG:$SHORT_SHA" -t "$IMG:latest")
+          if [ -n "$SEMVER_TAG" ]; then
+            TAGS+=(-t "$IMG:$SEMVER_TAG")
+          fi
+          docker build "${TAGS[@]}" "$DIR"
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             docker push "$IMG:$SHORT_SHA"
             docker push "$IMG:latest"
+            if [ -n "$SEMVER_TAG" ]; then
+              docker push "$IMG:$SEMVER_TAG"
+            fi
           fi
 
   build-ui:
     needs: [changes, lint-test-ui]
-    if: needs.changes.outputs.ui-changed == 'true' || github.event.inputs.force_all == 'true'
+    if: needs.changes.outputs.ui-changed == 'true' || github.event.inputs.force_all == 'true' || github.event.inputs.semver_tag != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -138,8 +150,16 @@ jobs:
           set -euo pipefail
           IMG="australia-southeast1-docker.pkg.dev/field-engineering-apac/kasunt/retail-returns-ui"
           SHORT_SHA="${GITHUB_SHA:0:7}"
-          docker build -t "$IMG:$SHORT_SHA" -t "$IMG:latest" ui
+          SEMVER_TAG="${{ github.event.inputs.semver_tag }}"
+          TAGS=(-t "$IMG:$SHORT_SHA" -t "$IMG:latest")
+          if [ -n "$SEMVER_TAG" ]; then
+            TAGS+=(-t "$IMG:$SEMVER_TAG")
+          fi
+          docker build "${TAGS[@]}" ui
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             docker push "$IMG:$SHORT_SHA"
             docker push "$IMG:latest"
+            if [ -n "$SEMVER_TAG" ]; then
+              docker push "$IMG:$SEMVER_TAG"
+            fi
           fi
