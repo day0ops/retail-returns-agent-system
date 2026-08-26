@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "es2023",
+    "lib": ["ES2023"],
+    "types": ["node", "express"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "outDir": "../dist-server",
+    "rootDir": ".",
+    "noEmit": false,
+    "skipLibCheck": true,
+    "strict": true,
+    "moduleDetection": "force"
+  },
+  "include": ["."]
+}
