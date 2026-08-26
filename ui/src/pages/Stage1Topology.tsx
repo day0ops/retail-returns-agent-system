@@ -17,7 +17,7 @@ export function Stage1Topology() {
           <p className="text-accent text-sm font-medium">Stage 1</p>
           <h1 className="text-2xl font-semibold">Meet the stack</h1>
           <p className="text-muted-foreground mt-1 max-w-md text-sm">
-            An AI agent handling a customer return, backed by a real MCP tool-calling substrate.
+            An AI agent handling a customer return, backed by a real agent-to-MCP integration.
           </p>
         </div>
         <ThemeToggle />
