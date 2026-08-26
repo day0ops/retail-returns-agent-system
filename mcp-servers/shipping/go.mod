@@ -1,4 +1,4 @@
-module github.com/day0ops/retail-returns-copilot/mcp-servers/shipping
+module github.com/day0ops/retail-returns-agent-system/mcp-servers/shipping
 
 go 1.26.3
 

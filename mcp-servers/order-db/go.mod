@@ -1,4 +1,4 @@
-module github.com/day0ops/retail-returns-copilot/mcp-servers/order-db
+module github.com/day0ops/retail-returns-agent-system/mcp-servers/order-db
 
 go 1.26.3
 

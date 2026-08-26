@@ -1,4 +1,4 @@
-module github.com/day0ops/retail-returns-copilot/agents/support-triage
+module github.com/day0ops/retail-returns-agent-system/agents/support-triage
 
 go 1.26.3
 
