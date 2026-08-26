@@ -118,3 +118,25 @@ jobs:
             docker push "$IMG:${{ github.sha }}"
             docker push "$IMG:latest"
           fi
+
+  build-ui:
+    needs: [changes, lint-test-ui]
+    if: needs.changes.outputs.ui-changed == 'true' || github.event.inputs.force_all == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - run: gcloud auth configure-docker australia-southeast1-docker.pkg.dev
+      - run: |
+          set -euo pipefail
+          IMG="australia-southeast1-docker.pkg.dev/field-engineering-apac/kasunt/retail-returns-ui"
+          docker build -t "$IMG:${{ github.sha }}" -t "$IMG:latest" ui
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            docker push "$IMG:${{ github.sha }}"
+            docker push "$IMG:latest"
+          fi
