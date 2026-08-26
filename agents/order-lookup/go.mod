@@ -1,4 +1,4 @@
-module github.com/day0ops/retail-returns-copilot/agents/order-lookup
+module github.com/day0ops/retail-returns-agent-system/agents/order-lookup
 
 go 1.26.3
 

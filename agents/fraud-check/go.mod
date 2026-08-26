@@ -1,4 +1,4 @@
-module github.com/day0ops/retail-returns-copilot/agents/fraud-check
+module github.com/day0ops/retail-returns-agent-system/agents/fraud-check
 
 go 1.26.3
 

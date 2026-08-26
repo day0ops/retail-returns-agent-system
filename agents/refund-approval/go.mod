@@ -1,4 +1,4 @@
-module github.com/day0ops/retail-returns-copilot/agents/refund-approval
+module github.com/day0ops/retail-returns-agent-system/agents/refund-approval
 
 go 1.26.3
 

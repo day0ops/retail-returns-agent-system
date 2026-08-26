@@ -1,10 +1,10 @@
 <div align="center">
 
-# Retail Returns Copilot
+# Retail Returns Agent System
 
 *A guided tour of AI agents handling customer returns - built on kagent, agentregistry, and agentgateway.*
 
-![build](https://github.com/day0ops/retail-returns-copilot/actions/workflows/build-images.yml/badge.svg)
+![build](https://github.com/day0ops/retail-returns-agent-system/actions/workflows/build-images.yml/badge.svg)
 ![go version](https://img.shields.io/badge/go-1.26-00ADD8?logo=go)
 
 </div>

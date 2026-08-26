@@ -1,4 +1,4 @@
-module github.com/day0ops/retail-returns-copilot/mcp-servers/fraud-scoring
+module github.com/day0ops/retail-returns-agent-system/mcp-servers/fraud-scoring
 
 go 1.26.3
 
