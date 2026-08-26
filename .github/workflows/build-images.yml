@@ -36,8 +36,8 @@ jobs:
       - uses: actions/setup-go@v5
         with: { go-version-file: 'go.work' }
       - run: gofmt -l . | tee /tmp/fmtdiff && [ ! -s /tmp/fmtdiff ]
-      - uses: golangci/golangci-lint-action@v6
-        with: { version: latest }
+      - uses: golangci/golangci-lint-action@v9
+        with: { version: v2.13.1 }
       # go.work's `use` directives are workspace modules, not a single module tree, so
       # a bare `./...` from the repo root doesn't resolve -- list each module path
       # explicitly (kept in sync with go.work by Task 6 as components are added).
