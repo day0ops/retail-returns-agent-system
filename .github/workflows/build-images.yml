@@ -26,14 +26,23 @@ jobs:
         with:
           filters: |
             order-db: 'mcp-servers/order-db/**'
+            payment: 'mcp-servers/payment/**'
+            shipping: 'mcp-servers/shipping/**'
+            inventory: 'mcp-servers/inventory/**'
+            fraud-scoring: 'mcp-servers/fraud-scoring/**'
             support-triage: 'agents/support-triage/**'
+            order-lookup: 'agents/order-lookup/**'
+            fraud-check: 'agents/fraud-check/**'
+            refund-approval: 'agents/refund-approval/**'
             ui: 'ui/**'
       # workflow_dispatch's force_all rebuilds every Go component regardless of what
       # changed (for cutting a demo checkpoint); otherwise use paths-filter's diff.
       # ALL_GO_COMPONENTS is kept in sync with the filters above as components are added.
       - id: components
         env:
-          ALL_GO_COMPONENTS: '["order-db","support-triage"]'
+          ALL_GO_COMPONENTS: >-
+            ["order-db","payment","shipping","inventory","fraud-scoring",
+            "support-triage","order-lookup","fraud-check","refund-approval"]
           FORCE_ALL: ${{ github.event.inputs.force_all == 'true' }}
           CHANGED: ${{ steps.filter.outputs.changes }}
         run: |
@@ -52,13 +61,22 @@ jobs:
       - run: gofmt -l . | tee /tmp/fmtdiff && [ ! -s /tmp/fmtdiff ]
       # go.work's `use` directives are workspace modules, not a single module tree, so
       # a bare `./...` from the repo root doesn't resolve -- list each module path
-      # explicitly below (kept in sync with go.work by Task 6 as components are added).
+      # explicitly below (kept in sync with go.work as components are added).
       - uses: golangci/golangci-lint-action@v9
         with:
           version: v2.13.1
-          args: ./agents/support-triage/... ./mcp-servers/order-db/...
-      - run: go build ./agents/support-triage/... ./mcp-servers/order-db/...
-      - run: go test ./agents/support-triage/... ./mcp-servers/order-db/... -v
+          args: >-
+            ./agents/support-triage/... ./agents/order-lookup/... ./agents/fraud-check/...
+            ./agents/refund-approval/... ./mcp-servers/order-db/... ./mcp-servers/payment/...
+            ./mcp-servers/shipping/... ./mcp-servers/inventory/... ./mcp-servers/fraud-scoring/...
+      - run: >-
+          go build ./agents/support-triage/... ./agents/order-lookup/... ./agents/fraud-check/...
+          ./agents/refund-approval/... ./mcp-servers/order-db/... ./mcp-servers/payment/...
+          ./mcp-servers/shipping/... ./mcp-servers/inventory/... ./mcp-servers/fraud-scoring/...
+      - run: >-
+          go test ./agents/support-triage/... ./agents/order-lookup/... ./agents/fraud-check/...
+          ./agents/refund-approval/... ./mcp-servers/order-db/... ./mcp-servers/payment/...
+          ./mcp-servers/shipping/... ./mcp-servers/inventory/... ./mcp-servers/fraud-scoring/... -v
 
   lint-test-ui:
     if: needs.changes.outputs.ui-changed == 'true' || github.event.inputs.force_all == 'true'

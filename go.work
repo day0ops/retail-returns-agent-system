@@ -2,5 +2,12 @@ go 1.26.3
 
 use (
 	./agents/support-triage
+	./agents/order-lookup
+	./agents/fraud-check
+	./agents/refund-approval
 	./mcp-servers/order-db
+	./mcp-servers/payment
+	./mcp-servers/shipping
+	./mcp-servers/inventory
+	./mcp-servers/fraud-scoring
 )
