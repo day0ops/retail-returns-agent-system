@@ -198,10 +198,10 @@ app.post('/api/stage-elicitation/answer', async (req, res) => {
 // calls refund-approval directly for the same reason (see the comment on
 // /api/stage-elicitation/ask). The interesting part here is what happens
 // AFTER the customer answers the ask_user pause: refund-approval tries to
-// call refund_payment for an order above agentgateway's own $ cap
-// (mcp-tool-policy in agentic-field-kit), and that call is denied at the
-// gateway regardless of the customer's choice or the LLM's own decision --
-// two independent, stacked controls, not a duplicate of Stage 3.
+// call refund_payment, and agentgateway denies it for the customer's own
+// propagated identity (mcp-tool-policy in agentic-field-kit), regardless of
+// the customer's choice or the LLM's own decision -- two independent,
+// stacked controls, not a duplicate of Stage 3.
 app.post('/api/stage-tool-policy/ask', async (req, res) => {
   if (!currentCustomerToken) {
     res.status(401).json({ error: 'not logged in — call /api/stage2/login first' })
