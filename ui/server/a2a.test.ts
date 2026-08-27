@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { extractReplyText, extractToolCallSteps } from './a2a.js'
+import { extractReplyText, extractToolCallSteps, extractPendingQuestion } from './a2a.js'
 
 describe('extractReplyText', () => {
   it('extracts text from a direct Message result', () => {
@@ -165,5 +165,94 @@ describe('extractToolCallSteps', () => {
 
   it('returns an empty array for a non-task result', () => {
     expect(extractToolCallSteps({ kind: 'message', parts: [] })).toEqual([])
+  })
+})
+
+describe('extractPendingQuestion', () => {
+  // Shape confirmed against kagent's own hitl_test.go fixtures, not guessed --
+  // note the 'kagent_' metadata prefix (distinct from extractToolCallSteps'
+  // 'adk_' prefix), since this DataPart is constructed by kagent's own HITL
+  // code, not the plain ADK tool-call path.
+  function inputRequiredTask(overrides: Record<string, unknown> = {}) {
+    return {
+      kind: 'task',
+      id: 'task_1',
+      contextId: 'ctx_1',
+      status: {
+        state: 'input-required',
+        message: {
+          role: 'agent',
+          parts: [
+            {
+              kind: 'data',
+              data: {
+                name: 'adk_request_confirmation',
+                id: 'confirm_1',
+                args: {
+                  originalFunctionCall: {
+                    name: 'ask_user',
+                    id: 'call_1',
+                    args: {
+                      questions: [
+                        {
+                          question: 'Cash refund or store credit?',
+                          choices: ['Cash', 'Store credit'],
+                        },
+                      ],
+                    },
+                  },
+                },
+              },
+              metadata: { kagent_type: 'function_call', kagent_is_long_running: true },
+            },
+          ],
+        },
+      },
+      ...overrides,
+    }
+  }
+
+  it('extracts the pending question from an input-required task', () => {
+    expect(extractPendingQuestion(inputRequiredTask())).toEqual({
+      taskId: 'task_1',
+      contextId: 'ctx_1',
+      confirmationId: 'confirm_1',
+      questions: [{ question: 'Cash refund or store credit?', choices: ['Cash', 'Store credit'] }],
+    })
+  })
+
+  it('returns null for a completed task', () => {
+    const task = inputRequiredTask()
+    task.status.state = 'completed'
+    expect(extractPendingQuestion(task)).toBeNull()
+  })
+
+  it('returns null when the DataPart uses the adk_ prefix instead of kagent_ (a regular tool call, not HITL)', () => {
+    const task = {
+      kind: 'task',
+      id: 'task_1',
+      contextId: 'ctx_1',
+      status: {
+        state: 'input-required',
+        message: {
+          parts: [
+            {
+              kind: 'data',
+              data: { name: 'adk_request_confirmation', id: 'confirm_1' },
+              metadata: { adk_type: 'function_call' },
+            },
+          ],
+        },
+      },
+    }
+    expect(extractPendingQuestion(task)).toBeNull()
+  })
+
+  it('returns null for a non-task result', () => {
+    expect(extractPendingQuestion({ kind: 'message', parts: [] })).toBeNull()
+  })
+
+  it('returns null when there is no message on the status', () => {
+    expect(extractPendingQuestion({ kind: 'task', status: { state: 'input-required' } })).toBeNull()
   })
 })

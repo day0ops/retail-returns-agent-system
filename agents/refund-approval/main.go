@@ -15,6 +15,7 @@ import (
 	"github.com/kagent-dev/kagent/go/adk/pkg/app"
 	adkmcp "github.com/kagent-dev/kagent/go/adk/pkg/mcp"
 	"github.com/kagent-dev/kagent/go/adk/pkg/models"
+	adktools "github.com/kagent-dev/kagent/go/adk/pkg/tools"
 	"github.com/kagent-dev/kagent/go/api/adk"
 	"go.uber.org/zap"
 	adkagent "google.golang.org/adk/v2/agent"
@@ -22,6 +23,7 @@ import (
 	"google.golang.org/adk/v2/runner"
 	"google.golang.org/adk/v2/server/adka2a" //nolint:staticcheck // kagent still uses a2a-go v1; this ADK package is the compatibility adapter.
 	adksession "google.golang.org/adk/v2/session"
+	adktool "google.golang.org/adk/v2/tool"
 )
 
 func main() {
@@ -50,17 +52,31 @@ func main() {
 		{Params: adk.StreamableHTTPConnectionParams{Url: envOr("PAYMENT_URL", "http://localhost:8080/mcp")}},
 	}, nil /* no SSE servers */, true /* propagateToken: forward the customer JWT to MCP calls */, nil /* headerProvider */)
 
+	// Elicitation (Stage 3 of the guided tour): for a high-value refund, pause
+	// and ask the customer a real question instead of deciding unilaterally.
+	// ask_user is kagent's own SDK tool -- no custom pause/resume codec needed
+	// here, the agent just calls it like any other tool.
+	askUserTool, err := adktools.NewAskUserTool()
+	if err != nil {
+		log.Fatalf("Failed to create ask_user tool: %v", err)
+	}
+
 	refundApproval, err := llmagent.New(llmagent.Config{
 		Name:        "refund_approval",
 		Description: "Issues a refund for an approved return",
 		Instruction: "You are a refund approval agent and the last hop in an automated " +
-			"return chain -- there is no human to ask a follow-up question, so conclude " +
-			"the request yourself. Given a customer's order ID, use the payment tools to " +
-			"look up their payment method and issue the refund. If no exact refund amount " +
-			"was given to you, use a standard full-refund amount of $49.99. State a clear " +
-			"final outcome (approved/denied and why) for the customer.",
+			"return chain -- there is no human to ask a follow-up question about anything " +
+			"except the refund method below, so conclude the request yourself otherwise. " +
+			"Given a customer's order ID, use the payment tools to look up their payment " +
+			"method. If no exact refund amount was given to you, use a standard full-refund " +
+			"amount of $49.99. If the refund amount exceeds $75, use the ask_user tool to " +
+			"ask the customer to choose between a cash refund and store credit before " +
+			"issuing it -- do not decide this for them. Below $75, issue a cash refund " +
+			"without asking. State a clear final outcome (approved/denied, amount, and " +
+			"refund method) for the customer.",
 		Model:    llmModel,
 		Toolsets: toolsets,
+		Tools:    []adktool.Tool{askUserTool},
 	})
 	if err != nil {
 		log.Fatalf("Failed to create refund_approval agent: %v", err)

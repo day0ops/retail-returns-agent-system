@@ -3,7 +3,13 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loginResourceOwnerPasswordCredentials } from './keycloak.js'
 import { decodeJwtClaims } from './jwt.js'
-import { sendMessage, extractToolCallSteps } from './a2a.js'
+import {
+  sendMessage,
+  extractToolCallSteps,
+  extractPendingQuestion,
+  resumeWithAnswer,
+  type PendingQuestion,
+} from './a2a.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -33,6 +39,11 @@ const config = {
 // this needs real session handling (cookie + server-side session store),
 // not a module-level singleton.
 let currentCustomerToken: string | null = null
+
+// Stage 3 (elicitation): the paused task's identity, same demo-scoped
+// in-memory-singleton caveat as currentCustomerToken above -- one presenter,
+// one pending question at a time.
+let pendingElicitation: PendingQuestion | null = null
 
 const app = express()
 app.use(express.json())
@@ -89,6 +100,76 @@ app.post('/api/stage3/ask', async (req, res) => {
   try {
     const result = await sendMessage(config.supportTriageUrl, message, currentCustomerToken)
     res.json({ ...result, steps: extractToolCallSteps(result.raw) })
+  } catch (err) {
+    res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
+  }
+})
+
+// Stage 3 (elicitation): same "process a return" flow as Stage 7, except this
+// time refund-approval pauses on a high-value refund and asks the customer to
+// choose a refund method. kagent's HITL machinery propagates that pause up
+// through every A2A hop automatically (order_lookup -> fraud_check ->
+// refund_approval each become "confirmable" tool calls in turn), so
+// support-triage's own top-level task -- the only thing this BFF ever talks
+// to -- genuinely enters the 'input-required' state, not just refund-approval's
+// inner one.
+app.post('/api/stage-elicitation/ask', async (req, res) => {
+  if (!currentCustomerToken) {
+    res.status(401).json({ error: 'not logged in — call /api/stage2/login first' })
+    return
+  }
+  const message = typeof req.body?.message === 'string' ? req.body.message : null
+  if (!message) {
+    res.status(400).json({ error: 'message (string) is required' })
+    return
+  }
+  try {
+    const result = await sendMessage(config.supportTriageUrl, message, currentCustomerToken)
+    const pending = extractPendingQuestion(result.raw)
+    if (pending) {
+      pendingElicitation = pending
+      res.json({ kind: 'input-required', pending })
+      return
+    }
+    pendingElicitation = null
+    res.json({
+      kind: 'completed',
+      replyText: result.replyText,
+      steps: extractToolCallSteps(result.raw),
+    })
+  } catch (err) {
+    res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
+  }
+})
+
+app.post('/api/stage-elicitation/answer', async (req, res) => {
+  if (!currentCustomerToken) {
+    res.status(401).json({ error: 'not logged in — call /api/stage2/login first' })
+    return
+  }
+  if (!pendingElicitation) {
+    res.status(400).json({ error: 'no pending question — call /api/stage-elicitation/ask first' })
+    return
+  }
+  const answer = typeof req.body?.answer === 'string' ? req.body.answer : null
+  if (!answer) {
+    res.status(400).json({ error: 'answer (string) is required' })
+    return
+  }
+  try {
+    const outcome = await resumeWithAnswer(
+      config.supportTriageUrl,
+      pendingElicitation,
+      [[answer]],
+      currentCustomerToken,
+    )
+    if (outcome.kind === 'input-required') {
+      pendingElicitation = outcome.pending
+      res.json(outcome)
+      return
+    }
+    pendingElicitation = null
+    res.json(outcome)
   } catch (err) {
     res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
   }
