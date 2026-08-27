@@ -3,7 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loginResourceOwnerPasswordCredentials } from './keycloak.js'
 import { decodeJwtClaims } from './jwt.js'
-import { sendMessage } from './a2a.js'
+import { sendMessage, extractToolCallSteps } from './a2a.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -66,6 +66,29 @@ app.post('/api/stage2/ask', async (req, res) => {
   try {
     const result = await sendMessage(config.supportTriageUrl, message, currentCustomerToken)
     res.json(result)
+  } catch (err) {
+    res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
+  }
+})
+
+// Stage 3: same login/session as Stage 2, but asks support-triage to process a
+// full return -- the interesting part is the A2A handoff chain that triggers
+// (order_lookup -> fraud_check -> refund_approval), not the token exchange
+// itself. `steps` gives the UI each hop's tool call/response without it having
+// to re-parse the raw A2A task shape.
+app.post('/api/stage3/ask', async (req, res) => {
+  if (!currentCustomerToken) {
+    res.status(401).json({ error: 'not logged in — call /api/stage2/login first' })
+    return
+  }
+  const message = typeof req.body?.message === 'string' ? req.body.message : null
+  if (!message) {
+    res.status(400).json({ error: 'message (string) is required' })
+    return
+  }
+  try {
+    const result = await sendMessage(config.supportTriageUrl, message, currentCustomerToken)
+    res.json({ ...result, steps: extractToolCallSteps(result.raw) })
   } catch (err) {
     res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
   }

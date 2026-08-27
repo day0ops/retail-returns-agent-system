@@ -21,7 +21,7 @@ const ASK_PROMPT =
  * diagnostic tool says it actually received, not just a description of the
  * mechanism.
  */
-export function Stage2TokenExchange(_props: StageProps) {
+export function Stage2TokenExchange({ onNext }: StageProps) {
   const [customerClaims, setCustomerClaims] = useState<Claims | null>(null)
   const [loginError, setLoginError] = useState<string | null>(null)
   const [loggingIn, setLoggingIn] = useState(false)
@@ -153,6 +153,12 @@ export function Stage2TokenExchange(_props: StageProps) {
           <ArrowRight className="size-3.5" />
           order-db saw a different token than the one the customer logged in with.
         </p>
+      )}
+
+      {onNext && (
+        <Button onClick={onNext} variant="secondary" className="self-end">
+          Next: A2A handoff chain <ArrowRight className="size-3.5" />
+        </Button>
       )}
     </div>
   )
