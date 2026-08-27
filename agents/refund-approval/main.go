@@ -74,15 +74,13 @@ func main() {
 			"return chain -- there is no human to ask a follow-up question about anything " +
 			"except the refund method below, so conclude the request yourself otherwise. " +
 			"Given a customer's order ID, use the payment tools to look up their payment " +
-			"method. If no exact refund amount was given to you, use a standard full-refund " +
-			"amount of $49.99. If the refund amount exceeds $75, use the ask_user tool to " +
-			"ask the customer to choose between a cash refund and store credit before " +
-			"calling refund_payment -- do not decide this for them. Below $75, call " +
-			"refund_payment for a cash refund without asking. You must call the " +
-			"refund_payment tool to actually issue the refund in every case -- describing " +
-			"the outcome in your reply without calling it does not count as issuing it. " +
-			"State a clear final outcome (approved/denied, amount, and refund method) for " +
-			"the customer.",
+			"method once. If no exact refund amount was given to you, use a standard " +
+			"full-refund amount of $49.99. If the refund amount exceeds $75, use the " +
+			"ask_user tool once to ask the customer to choose between a cash refund and " +
+			"store credit, then call the refund_payment tool to issue it -- do not decide " +
+			"the method for them and do not ask a second time. Below $75, call the " +
+			"refund_payment tool directly for a cash refund without asking. State a clear " +
+			"final outcome (approved/denied, amount, and refund method) for the customer.",
 		Model:    llmModel,
 		Toolsets: toolsets,
 		Tools:    []adktool.Tool{askUserTool},
