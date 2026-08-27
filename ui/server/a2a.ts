@@ -12,23 +12,19 @@ export interface AskAgentResult {
   raw: unknown
 }
 
-export async function sendMessage(
+// Low-level A2A message/send call, shared by a fresh message (sendMessage) and
+// a HITL resume (resumeWithAnswer) -- both are the same JSON-RPC method, just
+// with a different message shape.
+async function callAgent(
   agentUrl: string,
-  text: string,
+  message: Record<string, unknown>,
   bearerToken: string,
-): Promise<AskAgentResult> {
+): Promise<unknown> {
   const body = {
     jsonrpc: '2.0',
     id: randomUUID(),
     method: 'message/send',
-    params: {
-      message: {
-        kind: 'message',
-        messageId: randomUUID(),
-        role: 'user',
-        parts: [{ kind: 'text', text }],
-      },
-    },
+    params: { message },
   }
 
   const res = await fetch(agentUrl, {
@@ -49,8 +45,20 @@ export async function sendMessage(
   if (json.error) {
     throw new Error(`agent returned a JSON-RPC error: ${json.error.message}`)
   }
+  return json.result
+}
 
-  return { replyText: extractReplyText(json.result), raw: json.result }
+export async function sendMessage(
+  agentUrl: string,
+  text: string,
+  bearerToken: string,
+): Promise<AskAgentResult> {
+  const result = await callAgent(
+    agentUrl,
+    { kind: 'message', messageId: randomUUID(), role: 'user', parts: [{ kind: 'text', text }] },
+    bearerToken,
+  )
+  return { replyText: extractReplyText(result), raw: result }
 }
 
 function partsToText(parts: unknown): string | null {
@@ -142,4 +150,108 @@ export function extractToolCallSteps(result: unknown): ToolCallStep[] {
   }
 
   return order.map((id) => calls.get(id)!).filter(Boolean)
+}
+
+export interface AskUserQuestion {
+  question: string
+  choices?: string[]
+  multiple?: boolean
+}
+
+export interface PendingQuestion {
+  taskId: string
+  contextId: string
+  confirmationId: string
+  questions: AskUserQuestion[]
+}
+
+// A paused ask_user call is a Task in the 'input-required' state, carrying one
+// adk_request_confirmation DataPart in status.message.parts. Confirmed against
+// a real fixture in kagent's own hitl_test.go, not inferred:
+//   data: { name: 'adk_request_confirmation', id: <confirmationId>,
+//           args: { originalFunctionCall: { name: 'ask_user', args: { questions } } } }
+//   metadata: { kagent_type: 'function_call', kagent_is_long_running: true }
+// Note the 'kagent_' metadata prefix here, not 'adk_' -- this DataPart shape is
+// constructed by kagent's own HITL code (adk/pkg/a2a/hitl.go), a different
+// convention from the plain ADK tool-call parts extractToolCallSteps reads.
+export function extractPendingQuestion(result: unknown): PendingQuestion | null {
+  if (!result || typeof result !== 'object') return null
+  const obj = result as Record<string, unknown>
+  if (obj.kind !== 'task') return null
+
+  const status = obj.status as Record<string, unknown> | undefined
+  if (status?.state !== 'input-required') return null
+
+  const statusMessage = status.message as Record<string, unknown> | undefined
+  const parts = statusMessage?.parts as Array<Record<string, unknown>> | undefined
+  for (const part of parts ?? []) {
+    if (part.kind !== 'data') continue
+    const data = part.data as Record<string, unknown> | undefined
+    const metadata = part.metadata as Record<string, unknown> | undefined
+    if (metadata?.kagent_type !== 'function_call') continue
+    if (data?.name !== 'adk_request_confirmation' || typeof data.id !== 'string') continue
+
+    const args = data.args as Record<string, unknown> | undefined
+    const originalCall = args?.originalFunctionCall as Record<string, unknown> | undefined
+    if (originalCall?.name !== 'ask_user') continue
+    const callArgs = originalCall.args as Record<string, unknown> | undefined
+    const questions = callArgs?.questions as AskUserQuestion[] | undefined
+    if (!Array.isArray(questions) || questions.length === 0) continue
+
+    return {
+      taskId: obj.id as string,
+      contextId: obj.contextId as string,
+      confirmationId: data.id,
+      questions,
+    }
+  }
+  return null
+}
+
+export type AskAgentOutcome =
+  | { kind: 'completed'; replyText: string; steps: ToolCallStep[] }
+  | { kind: 'input-required'; pending: PendingQuestion }
+
+// Submits the human's answers for a paused ask_user call and resumes the same
+// task -- message.taskId/contextId must match the paused task exactly, or the
+// server starts a new task instead of resuming this one (a2a-go's Message.TaskID/
+// ContextID, both plain top-level fields, confirmed in a2a-go@v0.3.15/a2a/core.go).
+// The resume DataPart mirrors buildConfirmationResponsePart in kagent's hitl.go.
+export async function resumeWithAnswer(
+  agentUrl: string,
+  pending: PendingQuestion,
+  answers: string[][],
+  bearerToken: string,
+): Promise<AskAgentOutcome> {
+  const toolConfirmation = {
+    confirmed: true,
+    payload: { answers: answers.map((answer) => ({ answer })) },
+  }
+  const message = {
+    kind: 'message',
+    messageId: randomUUID(),
+    role: 'user',
+    taskId: pending.taskId,
+    contextId: pending.contextId,
+    parts: [
+      {
+        kind: 'data',
+        data: {
+          name: 'adk_request_confirmation',
+          id: pending.confirmationId,
+          response: { response: JSON.stringify(toolConfirmation) },
+        },
+        metadata: { kagent_type: 'function_response' },
+      },
+    ],
+  }
+
+  const result = await callAgent(agentUrl, message, bearerToken)
+  const stillPending = extractPendingQuestion(result)
+  if (stillPending) return { kind: 'input-required', pending: stillPending }
+  return {
+    kind: 'completed',
+    replyText: extractReplyText(result),
+    steps: extractToolCallSteps(result),
+  }
 }
