@@ -48,7 +48,7 @@ func main() {
 	toolsets := adkmcp.CreateToolsets(ctx, []adk.HttpMcpServerConfig{
 		{Params: adk.StreamableHTTPConnectionParams{Url: envOr("ORDER_DB_URL", "http://localhost:8080/mcp")}},
 		{Params: adk.StreamableHTTPConnectionParams{Url: envOr("SHIPPING_URL", "http://localhost:8081/mcp")}},
-	}, nil /* no SSE servers */, false /* propagateToken */, nil /* headerProvider */)
+	}, nil /* no SSE servers */, true /* propagateToken: forward the customer JWT to MCP calls */, nil /* headerProvider */)
 
 	orderLookup, err := llmagent.New(llmagent.Config{
 		Name:        "order_lookup",

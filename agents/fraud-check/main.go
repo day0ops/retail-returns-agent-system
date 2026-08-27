@@ -47,7 +47,7 @@ func main() {
 	// for local dev.
 	toolsets := adkmcp.CreateToolsets(ctx, []adk.HttpMcpServerConfig{
 		{Params: adk.StreamableHTTPConnectionParams{Url: envOr("FRAUD_SCORING_URL", "http://localhost:8080/mcp")}},
-	}, nil /* no SSE servers */, false /* propagateToken */, nil /* headerProvider */)
+	}, nil /* no SSE servers */, true /* propagateToken: forward the customer JWT to MCP calls */, nil /* headerProvider */)
 
 	fraudCheck, err := llmagent.New(llmagent.Config{
 		Name:        "fraud_check",

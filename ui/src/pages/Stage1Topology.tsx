@@ -1,7 +1,9 @@
 import { motion } from 'framer-motion'
-import { Bot, Database, Network, ShieldCheck } from 'lucide-react'
+import { ArrowRight, Bot, Database, Network, ShieldCheck } from 'lucide-react'
 import { TopologyNode } from '@/components/topology-node'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { Button } from '@/components/ui/button'
+import type { StageProps } from '@/pages/stage-props'
 
 /**
  * Stage1Topology is the guided tour's opening "meet the stack" view: a
@@ -9,7 +11,7 @@ import { ThemeToggle } from '@/components/theme-toggle'
  * agentgateway, cataloged by agentregistry. There's no live data or event
  * stream yet -- that lands in a later phase once the telemetry stage exists.
  */
-export function Stage1Topology() {
+export function Stage1Topology({ onNext }: StageProps) {
   return (
     <div className="mx-auto flex min-h-svh max-w-4xl flex-col items-center gap-12 px-6 py-16">
       <div className="flex w-full items-start justify-between">
@@ -70,6 +72,12 @@ export function Stage1Topology() {
           />
         </div>
       </div>
+
+      {onNext && (
+        <Button onClick={onNext} variant="secondary" className="self-end">
+          Next: Identity & token exchange <ArrowRight className="size-3.5" />
+        </Button>
+      )}
     </div>
   )
 }

@@ -48,7 +48,7 @@ func main() {
 	// local dev.
 	toolsets := adkmcp.CreateToolsets(ctx, []adk.HttpMcpServerConfig{
 		{Params: adk.StreamableHTTPConnectionParams{Url: envOr("PAYMENT_URL", "http://localhost:8080/mcp")}},
-	}, nil /* no SSE servers */, false /* propagateToken */, nil /* headerProvider */)
+	}, nil /* no SSE servers */, true /* propagateToken: forward the customer JWT to MCP calls */, nil /* headerProvider */)
 
 	refundApproval, err := llmagent.New(llmagent.Config{
 		Name:        "refund_approval",
