@@ -40,6 +40,10 @@ func main() {
 	llmModel, err := models.NewOpenAIModelWithLogger(&models.OpenAIConfig{
 		Model:   envOr("MODEL_NAME", "gpt-4o-mini"),
 		BaseUrl: os.Getenv("LLM_BASE_URL"),
+		// gpt-5.6 (agentgateway's current default, overriding whatever model is
+		// requested here) rejects function tools over /v1/chat/completions unless
+		// reasoning_effort is explicitly "none" -- it's a reasoning-class model.
+		ReasoningEffort: stringPtr("none"),
 	}, logger)
 	if err != nil {
 		log.Fatalf("Failed to create LLM model: %v", err)
@@ -123,4 +127,8 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func stringPtr(s string) *string {
+	return &s
 }
