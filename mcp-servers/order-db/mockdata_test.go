@@ -47,7 +47,7 @@ func TestListOrdersByCustomer(t *testing.T) {
 		customerID string
 		wantCount  int
 	}{
-		{name: "customer with multiple orders", customerID: "CUST-100", wantCount: 2},
+		{name: "customer with multiple orders", customerID: "CUST-100", wantCount: 3},
 		{name: "customer with one order", customerID: "CUST-103", wantCount: 1},
 		{name: "unknown customer", customerID: "CUST-999", wantCount: 0},
 		{name: "empty customer id returns all orders", customerID: "", wantCount: len(mockOrders)},

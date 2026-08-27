@@ -24,6 +24,7 @@ var mockOrders = []Order{
 	{OrderID: "ORD-1006", CustomerID: "CUST-101", Item: "Laptop Stand", Amount: 45.00, Status: "delivered", PurchaseDate: "2026-08-10"},
 	{OrderID: "ORD-1007", CustomerID: "CUST-104", Item: "Noise Cancelling Earbuds", Amount: 159.99, Status: "return_requested", PurchaseDate: "2026-08-05"},
 	{OrderID: "ORD-1008", CustomerID: "CUST-102", Item: "Webcam", Amount: 59.99, Status: "cancelled", PurchaseDate: "2026-07-11"},
+	{OrderID: "ORD-1009", CustomerID: "CUST-100", Item: "Home Theater Projector", Amount: 649.99, Status: "delivered", PurchaseDate: "2026-07-25"},
 }
 
 // ErrOrderNotFound is returned by getOrder when the requested order ID has
