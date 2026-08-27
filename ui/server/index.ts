@@ -31,6 +31,11 @@ const config = {
   // a second name that could drift out of sync.
   demoCustomerPassword: requiredEnv('RETAIL_RETURNS_CUSTOMER_PASSWORD'),
   supportTriageUrl: requiredEnv('SUPPORT_TRIAGE_URL'),
+  // Stage 4 (elicitation) calls refund-approval directly rather than through
+  // support-triage's full chain -- see the REFUND_APPROVAL_AGENT_URL comment
+  // in the app manifest for why (a kagent SDK bug in nested HITL resume
+  // forwarding).
+  refundApprovalUrl: requiredEnv('REFUND_APPROVAL_AGENT_URL'),
 }
 
 // Demo-scoped simplification: a single in-memory "current customer session",
@@ -105,14 +110,18 @@ app.post('/api/stage3/ask', async (req, res) => {
   }
 })
 
-// Stage 3 (elicitation): same "process a return" flow as Stage 7, except this
-// time refund-approval pauses on a high-value refund and asks the customer to
-// choose a refund method. kagent's HITL machinery propagates that pause up
-// through every A2A hop automatically (order_lookup -> fraud_check ->
-// refund_approval each become "confirmable" tool calls in turn), so
-// support-triage's own top-level task -- the only thing this BFF ever talks
-// to -- genuinely enters the 'input-required' state, not just refund-approval's
-// inner one.
+// Stage 3 (elicitation): calls refund-approval DIRECTLY, not through
+// support-triage's chain like Stage 7 does. A kagent SDK bug means nested A2A
+// HITL resume forwarding (remote_a2a_tool.go's handleResume) only works
+// correctly for the first hop an external client resumes -- every hop beyond
+// that silently fails and falls back to a generic "pending" placeholder
+// instead of the real outcome (see the "Known issues to revisit" section of
+// docs/superpowers/specs/2026-08-26-retail-returns-copilot-design.md in
+// agentic-field-kit). Calling refund-approval directly keeps this to exactly
+// one hop, so its ask_user pause resumes reliably. The tradeoff: this message
+// must carry the order/customer/amount details fraud-check would normally
+// have already verified and forwarded, since refund-approval isn't reached
+// through that chain here.
 app.post('/api/stage-elicitation/ask', async (req, res) => {
   if (!currentCustomerToken) {
     res.status(401).json({ error: 'not logged in — call /api/stage2/login first' })
@@ -124,7 +133,7 @@ app.post('/api/stage-elicitation/ask', async (req, res) => {
     return
   }
   try {
-    const result = await sendMessage(config.supportTriageUrl, message, currentCustomerToken)
+    const result = await sendMessage(config.refundApprovalUrl, message, currentCustomerToken)
     const pending = extractPendingQuestion(result.raw)
     if (pending) {
       pendingElicitation = pending
@@ -158,7 +167,7 @@ app.post('/api/stage-elicitation/answer', async (req, res) => {
   }
   try {
     const outcome = await resumeWithAnswer(
-      config.supportTriageUrl,
+      config.refundApprovalUrl,
       pendingElicitation,
       [[answer]],
       currentCustomerToken,

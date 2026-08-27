@@ -16,6 +16,8 @@ interface AskUserQuestion {
 interface PendingQuestion {
   taskId: string
   contextId: string
+  confirmationId: string
+  payload: Record<string, unknown>
   questions: AskUserQuestion[]
 }
 
@@ -23,17 +25,26 @@ type AskOutcome =
   | { kind: 'input-required'; pending: PendingQuestion }
   | { kind: 'completed'; replyText: string; steps: unknown[] }
 
-const ASK_PROMPT = 'I want to return order ORD-1001 for a refund. Please process the full return.'
+// Full order details, not just "process my return" -- this talks to
+// refund-approval directly (see the BFF's /api/stage-elicitation/ask), which
+// no longer gets these pre-verified and forwarded by fraud-check the way it
+// does in the Stage 7 chain.
+const ASK_PROMPT =
+  'Process a return for order ORD-1001: Wireless Headphones, purchased for $89.99 ' +
+  'on 2026-07-02, delivered by FastShip (tracking FS100100), for customer CUST-100. ' +
+  'Please process the full refund.'
 
 /**
  * Stage4Elicitation is the guided tour's fourth stop, "Stage 3" in the design
- * doc's capability numbering (elicitation): refund-approval pauses mid-chain
+ * doc's capability numbering (elicitation): refund-approval pauses mid-task
  * and asks the customer a real question -- kagent's ask_user tool, not a
  * scripted client-side confirm() dialog. ORD-1001's $89.99 order crosses the
- * $75 threshold that triggers it, reusing the same chain as the A2A handoff
- * stage. kagent's HITL machinery propagates the pause up through every A2A
- * hop, so support-triage's own top-level task -- the only thing this page's
- * BFF calls talk to -- genuinely enters the paused state.
+ * $75 threshold that triggers it. Unlike Stage 7, this page's BFF talks to
+ * refund-approval directly rather than through the full support-triage chain
+ * -- a kagent SDK bug means nested A2A HITL resume forwarding only works
+ * reliably for the first hop an external client resumes (see
+ * docs/superpowers/specs/2026-08-26-retail-returns-copilot-design.md's
+ * "Known issues to revisit" in agentic-field-kit).
  */
 export function Stage4Elicitation({ onNext }: StageProps) {
   const [outcome, setOutcome] = useState<AskOutcome | null>(null)
@@ -89,8 +100,8 @@ export function Stage4Elicitation({ onNext }: StageProps) {
           <h1 className="text-2xl font-semibold">Elicitation</h1>
           <p className="text-muted-foreground mt-1 max-w-md text-sm">
             When a refund exceeds $75, refund-approval doesn't decide alone -- it pauses mid-task
-            and asks the customer a real question (kagent's ask_user tool), several A2A hops deep in
-            the chain, then resumes once answered.
+            and asks the customer a real question (kagent's ask_user tool), then resumes once
+            answered.
           </p>
         </div>
         <ThemeToggle />
