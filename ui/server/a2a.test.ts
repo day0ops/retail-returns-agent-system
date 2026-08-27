@@ -169,10 +169,12 @@ describe('extractToolCallSteps', () => {
 })
 
 describe('extractPendingQuestion', () => {
-  // Shape confirmed against kagent's own hitl_test.go fixtures, not guessed --
-  // note the 'kagent_' metadata prefix (distinct from extractToolCallSteps'
-  // 'adk_' prefix), since this DataPart is constructed by kagent's own HITL
-  // code, not the plain ADK tool-call path.
+  // Shape confirmed live against the real 3-hop chain (order_lookup ->
+  // fraud_check -> refund_approval), not just kagent's hitl_test.go
+  // fixtures -- live traffic uses the 'adk_' metadata prefix (checked first
+  // by kagent's own ReadMetadataValue), and the DataPart's originalFunctionCall
+  // only ever names the immediate next hop, never 'ask_user' itself no matter
+  // how deep the real pause is. See extractPendingQuestion's own comment.
   function inputRequiredTask(overrides: Record<string, unknown> = {}) {
     return {
       kind: 'task',
@@ -189,21 +191,19 @@ describe('extractPendingQuestion', () => {
                 name: 'adk_request_confirmation',
                 id: 'confirm_1',
                 args: {
-                  originalFunctionCall: {
-                    name: 'ask_user',
-                    id: 'call_1',
-                    args: {
-                      questions: [
-                        {
-                          question: 'Cash refund or store credit?',
-                          choices: ['Cash', 'Store credit'],
-                        },
-                      ],
+                  originalFunctionCall: { name: 'fraud_check', id: 'call_1', args: {} },
+                  toolConfirmation: {
+                    confirmed: false,
+                    hint: "Remote agent 'order_lookup' requires approval for tool(s): fraud_check",
+                    payload: {
+                      task_id: 'task_ol_1',
+                      context_id: 'ctx_ol_1',
+                      subagent_name: 'order_lookup',
                     },
                   },
                 },
               },
-              metadata: { kagent_type: 'function_call', kagent_is_long_running: true },
+              metadata: { adk_type: 'function_call', adk_is_long_running: true },
             },
           ],
         },
@@ -216,8 +216,12 @@ describe('extractPendingQuestion', () => {
     expect(extractPendingQuestion(inputRequiredTask())).toEqual({
       taskId: 'task_1',
       contextId: 'ctx_1',
-      confirmationId: 'confirm_1',
-      questions: [{ question: 'Cash refund or store credit?', choices: ['Cash', 'Store credit'] }],
+      questions: [
+        {
+          question: 'How would you like your refund issued?',
+          choices: ['Cash refund', 'Store credit'],
+        },
+      ],
     })
   })
 
@@ -227,7 +231,7 @@ describe('extractPendingQuestion', () => {
     expect(extractPendingQuestion(task)).toBeNull()
   })
 
-  it('returns null when the DataPart uses the adk_ prefix instead of kagent_ (a regular tool call, not HITL)', () => {
+  it('also recognizes the kagent_ metadata prefix (fallback convention)', () => {
     const task = {
       kind: 'task',
       id: 'task_1',
@@ -239,13 +243,13 @@ describe('extractPendingQuestion', () => {
             {
               kind: 'data',
               data: { name: 'adk_request_confirmation', id: 'confirm_1' },
-              metadata: { adk_type: 'function_call' },
+              metadata: { kagent_type: 'function_call', kagent_is_long_running: true },
             },
           ],
         },
       },
     }
-    expect(extractPendingQuestion(task)).toBeNull()
+    expect(extractPendingQuestion(task)).not.toBeNull()
   })
 
   it('returns null for a non-task result', () => {
