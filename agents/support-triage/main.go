@@ -15,6 +15,7 @@ import (
 	"github.com/kagent-dev/kagent/go/adk/pkg/app"
 	adkmcp "github.com/kagent-dev/kagent/go/adk/pkg/mcp"
 	"github.com/kagent-dev/kagent/go/adk/pkg/models"
+	adktools "github.com/kagent-dev/kagent/go/adk/pkg/tools"
 	"github.com/kagent-dev/kagent/go/api/adk"
 	"go.uber.org/zap"
 	adkagent "google.golang.org/adk/v2/agent"
@@ -22,6 +23,7 @@ import (
 	"google.golang.org/adk/v2/runner"
 	"google.golang.org/adk/v2/server/adka2a" //nolint:staticcheck // kagent still uses a2a-go v1; this ADK package is the compatibility adapter.
 	adksession "google.golang.org/adk/v2/session"
+	adktool "google.golang.org/adk/v2/tool"
 )
 
 func main() {
@@ -50,14 +52,30 @@ func main() {
 		{Params: adk.StreamableHTTPConnectionParams{Url: envOr("ORDER_DB_URL", "http://localhost:8080/mcp")}},
 	}, nil /* no SSE servers */, true /* propagateToken: forward the customer JWT to MCP calls */, nil /* headerProvider */)
 
+	// First hop of the A2A chain: hand off eligibility/fraud/refund work to
+	// order-lookup. propagateToken: true forwards the customer's JWT on this
+	// outbound A2A call the same way it's forwarded to order-db above.
+	orderLookupTool, _, err := adktools.NewKAgentRemoteA2ATool(
+		"order_lookup",
+		"Delegates order and shipment detail lookup to the order-lookup agent",
+		envOr("ORDER_LOOKUP_AGENT_URL", "http://localhost:8081"),
+		nil, nil, true,
+	)
+	if err != nil {
+		log.Fatalf("Failed to create order_lookup A2A tool: %v", err)
+	}
+
 	supportTriage, err := llmagent.New(llmagent.Config{
 		Name:        "support_triage",
 		Description: "Triages a customer's return/refund request and looks up their order",
 		Instruction: "You are a retail support agent. Given a customer's return request, " +
-			"use the order-db tools to look up their order and summarize its status. " +
-			"Do not process refunds yourself -- that's a later stage of this demo.",
+			"use the order-db tools to look up their order, then delegate to the " +
+			"order_lookup agent to verify shipment details and continue the return chain " +
+			"(order_lookup hands off to fraud_check, which hands off to refund_approval). " +
+			"Summarize the final outcome for the customer. Do not process refunds yourself.",
 		Model:    llmModel,
 		Toolsets: toolsets,
+		Tools:    []adktool.Tool{orderLookupTool},
 	})
 	if err != nil {
 		log.Fatalf("Failed to create support_triage agent: %v", err)
