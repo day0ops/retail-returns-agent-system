@@ -10,6 +10,7 @@ import {
   resumeWithAnswer,
   type PendingQuestion,
 } from './a2a.js'
+import { listTools } from './mcp.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -31,11 +32,16 @@ const config = {
   // a second name that could drift out of sync.
   demoCustomerPassword: requiredEnv('RETAIL_RETURNS_CUSTOMER_PASSWORD'),
   supportTriageUrl: requiredEnv('SUPPORT_TRIAGE_URL'),
-  // Stage 4 (elicitation) calls refund-approval directly rather than through
+  // Stage 3 (elicitation) calls refund-approval directly rather than through
   // support-triage's full chain -- see the REFUND_APPROVAL_AGENT_URL comment
   // in the app manifest for why (a kagent SDK bug in nested HITL resume
   // forwarding).
   refundApprovalUrl: requiredEnv('REFUND_APPROVAL_AGENT_URL'),
+  // Stage 4 (tool policy, progressive-disclosure sub-scene): before (plain,
+  // authenticated) vs. after (codeMode, unauthenticated -- see the app
+  // manifest comment) tool-schema comparison for order-db-mcp.
+  orderDbMcpUrl: requiredEnv('ORDER_DB_MCP_URL'),
+  orderDbCodemodeMcpUrl: requiredEnv('ORDER_DB_CODEMODE_MCP_URL'),
 }
 
 // Demo-scoped simplification: a single in-memory "current customer session",
@@ -49,6 +55,10 @@ let currentCustomerToken: string | null = null
 // in-memory-singleton caveat as currentCustomerToken above -- one presenter,
 // one pending question at a time.
 let pendingElicitation: PendingQuestion | null = null
+
+// Stage 4 (tool policy): same pattern as pendingElicitation, separate
+// singleton since it's a distinct guided-tour stage with its own pause.
+let pendingToolPolicy: PendingQuestion | null = null
 
 const app = express()
 app.use(express.json())
@@ -179,6 +189,98 @@ app.post('/api/stage-elicitation/answer', async (req, res) => {
     }
     pendingElicitation = null
     res.json(outcome)
+  } catch (err) {
+    res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
+  }
+})
+
+// Stage 4 (tool policy): same single-hop shape as Stage 3 (elicitation) --
+// calls refund-approval directly for the same reason (see the comment on
+// /api/stage-elicitation/ask). The interesting part here is what happens
+// AFTER the customer answers the ask_user pause: refund-approval tries to
+// call refund_payment for an order above agentgateway's own $ cap
+// (mcp-tool-policy in agentic-field-kit), and that call is denied at the
+// gateway regardless of the customer's choice or the LLM's own decision --
+// two independent, stacked controls, not a duplicate of Stage 3.
+app.post('/api/stage-tool-policy/ask', async (req, res) => {
+  if (!currentCustomerToken) {
+    res.status(401).json({ error: 'not logged in — call /api/stage2/login first' })
+    return
+  }
+  const message = typeof req.body?.message === 'string' ? req.body.message : null
+  if (!message) {
+    res.status(400).json({ error: 'message (string) is required' })
+    return
+  }
+  try {
+    const result = await sendMessage(config.refundApprovalUrl, message, currentCustomerToken)
+    const pending = extractPendingQuestion(result.raw)
+    if (pending) {
+      pendingToolPolicy = pending
+      res.json({ kind: 'input-required', pending })
+      return
+    }
+    pendingToolPolicy = null
+    res.json({
+      kind: 'completed',
+      replyText: result.replyText,
+      steps: extractToolCallSteps(result.raw),
+    })
+  } catch (err) {
+    res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
+  }
+})
+
+app.post('/api/stage-tool-policy/answer', async (req, res) => {
+  if (!currentCustomerToken) {
+    res.status(401).json({ error: 'not logged in — call /api/stage2/login first' })
+    return
+  }
+  if (!pendingToolPolicy) {
+    res.status(400).json({ error: 'no pending question — call /api/stage-tool-policy/ask first' })
+    return
+  }
+  const answer = typeof req.body?.answer === 'string' ? req.body.answer : null
+  if (!answer) {
+    res.status(400).json({ error: 'answer (string) is required' })
+    return
+  }
+  try {
+    const outcome = await resumeWithAnswer(
+      config.refundApprovalUrl,
+      pendingToolPolicy,
+      [[answer]],
+      currentCustomerToken,
+    )
+    if (outcome.kind === 'input-required') {
+      pendingToolPolicy = outcome.pending
+      res.json(outcome)
+      return
+    }
+    pendingToolPolicy = null
+    res.json(outcome)
+  } catch (err) {
+    res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
+  }
+})
+
+// Stage 4 (tool policy, progressive-disclosure sub-scene): live tool-schema
+// comparison, not hardcoded text. "before" is order-db's normal MCP route
+// (authenticated, same one order-lookup itself calls); "after" is the
+// mcp-codemode-route feature's separate Backend+HTTPRoute with
+// entMcp.codeMode enabled, collapsing the same server's catalog into one
+// code-execution meta-tool.
+app.get('/api/stage-tool-policy/codemode-comparison', async (_req, res) => {
+  if (!currentCustomerToken) {
+    res.status(401).json({ error: 'not logged in — call /api/stage2/login first' })
+    return
+  }
+  try {
+    const [before, after] = await Promise.all([
+      listTools(config.orderDbMcpUrl, currentCustomerToken),
+      listTools(config.orderDbCodemodeMcpUrl),
+    ])
+    res.json({ before, after })
   } catch (err) {
     res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
   }

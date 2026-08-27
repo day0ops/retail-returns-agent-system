@@ -19,6 +19,7 @@ var mockShipments = []Shipment{
 	{OrderID: "ORD-1003", Carrier: "ParcelPro", TrackingNumber: "PP100300", Status: "in_transit"},
 	{OrderID: "ORD-1004", Carrier: "FastShip", TrackingNumber: "FS100400", Status: "delivered"},
 	{OrderID: "ORD-1005", Carrier: "ParcelPro", TrackingNumber: "PP100500", Status: "delivered"},
+	{OrderID: "ORD-1009", Carrier: "FastShip", TrackingNumber: "FS100900", Status: "delivered"},
 }
 
 // ErrShipmentNotFound is returned by getShipmentStatus when the given order
