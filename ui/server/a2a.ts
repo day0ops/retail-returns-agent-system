@@ -161,6 +161,8 @@ export interface AskUserQuestion {
 export interface PendingQuestion {
   taskId: string
   contextId: string
+  confirmationId: string
+  payload: Record<string, unknown>
   questions: AskUserQuestion[]
 }
 
@@ -201,11 +203,17 @@ export function extractPendingQuestion(result: unknown): PendingQuestion | null 
     const type = metadata?.adk_type ?? metadata?.kagent_type
     const isLongRunning = metadata?.adk_is_long_running ?? metadata?.kagent_is_long_running
     if (type !== 'function_call' || isLongRunning !== true) continue
-    if (data?.name !== 'adk_request_confirmation') continue
+    if (data?.name !== 'adk_request_confirmation' || typeof data.id !== 'string') continue
+
+    const args = data.args as Record<string, unknown> | undefined
+    const toolConfirmation = args?.toolConfirmation as Record<string, unknown> | undefined
+    const payload = (toolConfirmation?.payload as Record<string, unknown> | undefined) ?? {}
 
     return {
       taskId: obj.id as string,
       contextId: obj.contextId as string,
+      confirmationId: data.id,
+      payload,
       questions: [
         {
           question: 'How would you like your refund issued?',
@@ -221,51 +229,75 @@ export type AskAgentOutcome =
   | { kind: 'completed'; replyText: string; steps: ToolCallStep[] }
   | { kind: 'input-required'; pending: PendingQuestion }
 
-// Resumes the paused top-level task with the customer's answer.
-// message.taskId/contextId must match the paused task exactly, or the server
-// starts a new task instead of resuming this one (a2a-go's Message.TaskID/
-// ContextID, both plain top-level fields, confirmed in a2a-go@v0.3.15/a2a/core.go).
+// Resumes the paused task with the customer's answer. message.taskId/contextId
+// must match the paused task exactly, or the server starts a new task instead
+// of resuming this one (a2a-go's Message.TaskID/ContextID, both plain
+// top-level fields, confirmed in a2a-go@v0.3.15/a2a/core.go).
 //
-// Wire shape confirmed against remote_a2a_tool.go's buildDecisionData: a
-// DataPart with decision_type + ask_user_answers, NOT a hand-built
-// ToolConfirmation response part keyed by confirmationId. The server
-// reconstructs the actual FunctionResponse(s) from the STORED task itself
-// (BuildResumeHITLMessage in hitl.go), so the client only ever supplies the
-// decision -- it never needs to know the confirmationId. Critically, a
-// single resume sent to the TOP-level task cascades automatically: each
-// hop's handleResume reads task_id/context_id from its own confirmation
-// payload and relays the same decisionData (including ask_user_answers) to
-// the next hop down, so one round trip resolves the whole 3-hop chain down
-// to refund-approval's actual ask_user pause.
+// Wire shape confirmed against the authoritative client contract documented
+// on toolconfirmation.FunctionCallName in google.golang.org/adk/v2 itself
+// (tool/toolconfirmation/tool_confirmation.go): a FunctionResponse DataPart
+// with the SAME id as the pending FunctionCall, name "adk_request_confirmation",
+// and a response payload of { confirmed, payload } -- NOT the simplified
+// { decision_type, ask_user_answers } shape (that shortcut only works for
+// kagent's own internal machine-to-machine hop forwarding in
+// remote_a2a_tool.go, which sends it with no function-response metadata at
+// all and gets rejected by ADK's own pre-execution HandleInputRequired check
+// when a raw external client sends it -- confirmed live: it fails with
+// 'no input provided for function call ID ...' every time, regardless of
+// decision content).
+//
+// One resume only unblocks the IMMEDIATE next hop, not the whole chain --
+// remote_a2a_tool.go's handleInputRequired calls RequestConfirmation
+// independently at every hop, so order_lookup's own resume of fraud_check
+// (forwarded server-side, invisible to this client) can itself re-pause and
+// bubble back up as a NEW input-required task at a new taskId. Confirmed
+// live against the real 3-hop chain: resuming cascades one hop per round
+// trip, not all at once. Loop, forwarding the same answer merged into each
+// new pending payload, until it actually completes.
 export async function resumeWithAnswer(
   agentUrl: string,
   pending: PendingQuestion,
   answers: string[][],
   bearerToken: string,
 ): Promise<AskAgentOutcome> {
-  const message = {
-    kind: 'message',
-    messageId: randomUUID(),
-    role: 'user',
-    taskId: pending.taskId,
-    contextId: pending.contextId,
-    parts: [
-      {
-        kind: 'data',
-        data: {
-          decision_type: 'approve',
-          ask_user_answers: answers.map((answer) => ({ answer })),
+  let current = pending
+  const maxHops = 6 // generous headroom over this demo's 3-hop chain
+
+  for (let hop = 0; hop < maxHops; hop++) {
+    const message = {
+      kind: 'message',
+      messageId: randomUUID(),
+      role: 'user',
+      taskId: current.taskId,
+      contextId: current.contextId,
+      parts: [
+        {
+          kind: 'data',
+          data: {
+            name: 'adk_request_confirmation',
+            id: current.confirmationId,
+            response: {
+              confirmed: true,
+              payload: { ...current.payload, answers: answers.map((answer) => ({ answer })) },
+            },
+          },
+          metadata: { adk_type: 'function_response' },
         },
-      },
-    ],
+      ],
+    }
+
+    const result = await callAgent(agentUrl, message, bearerToken)
+    const stillPending = extractPendingQuestion(result)
+    if (!stillPending) {
+      return {
+        kind: 'completed',
+        replyText: extractReplyText(result),
+        steps: extractToolCallSteps(result),
+      }
+    }
+    current = stillPending
   }
 
-  const result = await callAgent(agentUrl, message, bearerToken)
-  const stillPending = extractPendingQuestion(result)
-  if (stillPending) return { kind: 'input-required', pending: stillPending }
-  return {
-    kind: 'completed',
-    replyText: extractReplyText(result),
-    steps: extractToolCallSteps(result),
-  }
+  return { kind: 'input-required', pending: current }
 }

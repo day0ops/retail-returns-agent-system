@@ -216,6 +216,8 @@ describe('extractPendingQuestion', () => {
     expect(extractPendingQuestion(inputRequiredTask())).toEqual({
       taskId: 'task_1',
       contextId: 'ctx_1',
+      confirmationId: 'confirm_1',
+      payload: { task_id: 'task_ol_1', context_id: 'ctx_ol_1', subagent_name: 'order_lookup' },
       questions: [
         {
           question: 'How would you like your refund issued?',
