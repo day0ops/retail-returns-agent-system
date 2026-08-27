@@ -50,11 +50,10 @@ interface CodemodeComparison {
   after: McpTool[]
 }
 
-// A $649.99 order -- crosses both refund-approval's own $75 ask_user threshold
-// (Stage 3) and agentgateway's separate $500 hard cap on refund_payment
-// (this stage), so both controls fire in sequence: the customer still picks a
-// refund method, but the actual payment call gets denied at the gateway
-// regardless of that choice.
+// ORD-1009's $649.99 crosses refund-approval's own $75 ask_user threshold
+// (Stage 3), so the customer still gets asked to pick a refund method --
+// then agentgateway independently denies the actual payment call for the
+// customer's own identity, regardless of that choice or the amount.
 const ASK_PROMPT =
   'Process a return for order ORD-1009: Home Theater Projector, purchased for $649.99 ' +
   'on 2026-07-25, delivered by FastShip (tracking FS100900), for customer CUST-100. ' +
@@ -62,18 +61,22 @@ const ASK_PROMPT =
 
 /**
  * Stage5ToolPolicy is the guided tour's fifth stop, "Stage 4" in the design
- * doc's capability numbering (tool policy): agentgateway enforces a hard
- * dollar cap on refund_payment (mcp.authorization, Deny) independent of what
- * the customer chooses or the LLM decides. Same single-hop shape as Stage 3
- * (elicitation) and the same reason -- calls refund-approval directly, not
- * through support-triage's full chain, since a kagent SDK bug means nested
- * A2A HITL resume forwarding only works reliably for the first hop an
- * external client resumes (see agentic-field-kit's design doc "Known issues
- * to revisit"). This stage's order (ORD-1009, $649.99) crosses Stage 3's own
- * $75 ask_user threshold too, so both controls run in sequence: the human
- * still gets asked for a refund method, then the gateway independently blocks
- * the actual payment above $500 -- two stacked controls, not a duplicate of
- * Stage 3.
+ * doc's capability numbering (tool policy): agentgateway denies refund_payment
+ * for the customer's own propagated identity (mcp.authorization, Deny, keyed
+ * on the jwt.Groups claim), independent of what the customer chooses or the
+ * LLM decides. Originally designed as a dollar-amount cap, but mcp.authorization's
+ * CEL cannot see tool call arguments at all (confirmed live and via source --
+ * see agentic-field-kit's design doc "Confirmed CRD schemas" correction) --
+ * only tool/prompt/resource identity and jwt.* claims are available, so this
+ * redesigned around identity gating: even though the customer's identity is
+ * deliberately propagated end-to-end for full auditability (Stage 2), a
+ * customer identity can never directly execute a real money movement -- only
+ * a backend/service identity could, and none is authorized in this profile.
+ * Same single-hop shape as Stage 3 (elicitation) and the same reason -- calls
+ * refund-approval directly, not through support-triage's full chain, since a
+ * kagent SDK bug means nested A2A HITL resume forwarding only works reliably
+ * for the first hop an external client resumes (see agentic-field-kit's
+ * design doc "Known issues to revisit").
  */
 export function Stage5ToolPolicy({ onNext }: StageProps) {
   const [outcome, setOutcome] = useState<AskOutcome | null>(null)
@@ -147,9 +150,9 @@ export function Stage5ToolPolicy({ onNext }: StageProps) {
           <p className="text-accent text-sm font-medium">Stage 4</p>
           <h1 className="text-2xl font-semibold">Tool policy</h1>
           <p className="text-muted-foreground mt-1 max-w-md text-sm">
-            Above $500, agentgateway itself denies the refund_payment call -- a gateway-enforced cap
-            no agent instruction can override, independent of the refund method the customer
-            chooses.
+            agentgateway itself denies refund_payment for the customer's own identity -- a
+            gateway-enforced rule no agent instruction can override, independent of the refund
+            method the customer chooses.
           </p>
         </div>
         <ThemeToggle />
@@ -164,8 +167,8 @@ export function Stage5ToolPolicy({ onNext }: StageProps) {
           <CardHeader>
             <CardTitle>Process a return</CardTitle>
             <CardDescription>
-              Order ORD-1009 ($649.99) crosses both the elicitation threshold and the gateway's $500
-              refund cap.
+              Order ORD-1009 ($649.99) crosses Stage 3's elicitation threshold, so this run should
+              pause before the gateway independently denies the actual refund.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
