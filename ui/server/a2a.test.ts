@@ -233,6 +233,60 @@ describe('extractPendingQuestion', () => {
     expect(extractPendingQuestion(task)).toBeNull()
   })
 
+  // Shape confirmed live calling refund-approval directly (Stage 4, one hop
+  // from the caller) -- unlike the nested case above, originalFunctionCall
+  // names 'ask_user' itself here, with the real question/choices reachable,
+  // and toolConfirmation.payload is null rather than an object.
+  it('surfaces the real question/choices for a direct ask_user pause', () => {
+    const task = {
+      kind: 'task',
+      id: 'task_2',
+      contextId: 'ctx_2',
+      status: {
+        state: 'input-required',
+        message: {
+          parts: [
+            {
+              kind: 'data',
+              data: {
+                name: 'adk_request_confirmation',
+                id: 'confirm_2',
+                args: {
+                  originalFunctionCall: {
+                    name: 'ask_user',
+                    id: 'call_2',
+                    args: {
+                      questions: [
+                        {
+                          question: 'The refund amount exceeds $75. Cash or store credit?',
+                          choices: ['Cash Refund', 'Store Credit'],
+                        },
+                      ],
+                    },
+                  },
+                  toolConfirmation: { confirmed: false, hint: '...', payload: null },
+                },
+              },
+              metadata: { adk_type: 'function_call', adk_is_long_running: true },
+            },
+          ],
+        },
+      },
+    }
+    expect(extractPendingQuestion(task)).toEqual({
+      taskId: 'task_2',
+      contextId: 'ctx_2',
+      confirmationId: 'confirm_2',
+      payload: {},
+      questions: [
+        {
+          question: 'The refund amount exceeds $75. Cash or store credit?',
+          choices: ['Cash Refund', 'Store Credit'],
+        },
+      ],
+    })
+  })
+
   it('also recognizes the kagent_ metadata prefix (fallback convention)', () => {
     const task = {
       kind: 'task',

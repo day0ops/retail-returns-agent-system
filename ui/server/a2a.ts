@@ -166,26 +166,25 @@ export interface PendingQuestion {
   questions: AskUserQuestion[]
 }
 
-// A paused chain surfaces as the TOP-level task entering 'input-required',
-// carrying an adk_request_confirmation DataPart in status.message.parts --
-// confirmed live against the real 3-hop chain (order_lookup -> fraud_check ->
-// refund_approval), not just kagent's hitl_test.go fixtures. Two real
-// surprises versus those fixtures:
+// A paused task surfaces as 'input-required', carrying an
+// adk_request_confirmation DataPart in status.message.parts -- confirmed
+// live, not just against kagent's hitl_test.go fixtures. Metadata uses the
+// plain ADK convention (adk_type/adk_is_long_running), not kagent_type --
+// ReadMetadataValue in kagent's own hitl.go checks adk_<key> first,
+// kagent_<key> second, and live traffic hits the first.
 //
-// 1. Metadata uses the plain ADK convention (adk_type/adk_is_long_running),
-//    not kagent_type -- ReadMetadataValue in kagent's own hitl.go checks
-//    adk_<key> first, kagent_<key> second, and live traffic hits the first.
+// When this is a DIRECT native ask_user pause (the caller is one hop away
+// from the agent holding the ask_user tool, as Stage 4 now is by calling
+// refund-approval directly), `originalFunctionCall.name === 'ask_user'` and
+// its real question/choices are reachable right here -- surfaced dynamically.
 //
-// 2. The question text itself is NOT reachable here. Each hop's
-//    RequestConfirmation (remote_a2a_tool.go:handleInputRequired) only
-//    records the name of its OWN immediate next-hop tool call -- e.g.
-//    support-triage's pending state names "fraud_check" (order_lookup's next
-//    call), not "ask_user". HitlPartInfo has no field for further nesting,
-//    so the real ask_user question -- two more hops down, inside
-//    refund-approval -- genuinely isn't part of this payload; reaching it
-//    would mean a separate tasks/get round-trip per intermediate agent. This
-//    demo only ever asks one question (refund method), so we surface that
-//    statically rather than building a multi-hop task-drilling client for it.
+// When it's a NESTED pause instead (an intermediate agent's own remote-tool
+// call bubbling up, e.g. if this were called through a multi-hop chain),
+// `originalFunctionCall` only ever names the immediate next hop, never
+// 'ask_user' itself -- HitlPartInfo (remote_a2a_tool.go:handleInputRequired)
+// has no field for further nesting, so the real question genuinely isn't
+// part of that payload. Falls back to a generic placeholder in that case
+// rather than failing outright.
 export function extractPendingQuestion(result: unknown): PendingQuestion | null {
   if (!result || typeof result !== 'object') return null
   const obj = result as Record<string, unknown>
@@ -209,17 +208,27 @@ export function extractPendingQuestion(result: unknown): PendingQuestion | null 
     const toolConfirmation = args?.toolConfirmation as Record<string, unknown> | undefined
     const payload = (toolConfirmation?.payload as Record<string, unknown> | undefined) ?? {}
 
+    const originalCall = args?.originalFunctionCall as Record<string, unknown> | undefined
+    const askUserArgs =
+      originalCall?.name === 'ask_user'
+        ? (originalCall.args as Record<string, unknown> | undefined)
+        : undefined
+    const dynamicQuestions = askUserArgs?.questions as AskUserQuestion[] | undefined
+
     return {
       taskId: obj.id as string,
       contextId: obj.contextId as string,
       confirmationId: data.id,
       payload,
-      questions: [
-        {
-          question: 'How would you like your refund issued?',
-          choices: ['Cash refund', 'Store credit'],
-        },
-      ],
+      questions:
+        Array.isArray(dynamicQuestions) && dynamicQuestions.length > 0
+          ? dynamicQuestions
+          : [
+              {
+                question: 'How would you like your refund issued?',
+                choices: ['Cash refund', 'Store credit'],
+              },
+            ],
     }
   }
   return null
