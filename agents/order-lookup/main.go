@@ -14,6 +14,7 @@ import (
 	"github.com/kagent-dev/kagent/go/adk/pkg/app"
 	adkmcp "github.com/kagent-dev/kagent/go/adk/pkg/mcp"
 	"github.com/kagent-dev/kagent/go/adk/pkg/models"
+	adktools "github.com/kagent-dev/kagent/go/adk/pkg/tools"
 	"github.com/kagent-dev/kagent/go/api/adk"
 	"go.uber.org/zap"
 	adkagent "google.golang.org/adk/v2/agent"
@@ -21,6 +22,7 @@ import (
 	"google.golang.org/adk/v2/runner"
 	"google.golang.org/adk/v2/server/adka2a" //nolint:staticcheck // kagent still uses a2a-go v1; this ADK package is the compatibility adapter.
 	adksession "google.golang.org/adk/v2/session"
+	adktool "google.golang.org/adk/v2/tool"
 )
 
 func main() {
@@ -50,14 +52,29 @@ func main() {
 		{Params: adk.StreamableHTTPConnectionParams{Url: envOr("SHIPPING_URL", "http://localhost:8081/mcp")}},
 	}, nil /* no SSE servers */, true /* propagateToken: forward the customer JWT to MCP calls */, nil /* headerProvider */)
 
+	// Next hop of the A2A chain: hand off to fraud_check once order/shipment
+	// details are confirmed. propagateToken: true forwards the customer's JWT
+	// on this outbound A2A call the same way it's forwarded to the MCP calls above.
+	fraudCheckTool, _, err := adktools.NewKAgentRemoteA2ATool(
+		"fraud_check",
+		"Delegates transaction fraud risk scoring to the fraud-check agent",
+		envOr("FRAUD_CHECK_AGENT_URL", "http://localhost:8082"),
+		nil, nil, true,
+	)
+	if err != nil {
+		log.Fatalf("Failed to create fraud_check A2A tool: %v", err)
+	}
+
 	orderLookup, err := llmagent.New(llmagent.Config{
 		Name:        "order_lookup",
 		Description: "Looks up a customer's order and its shipment status",
 		Instruction: "You are a retail order lookup agent. Given an order ID, " +
 			"use the order-db tools to fetch the order and the shipping tools " +
-			"to fetch its shipment status. Summarize both for the caller.",
+			"to fetch its shipment status. Once confirmed, delegate to the " +
+			"fraud_check agent to continue the return chain. Summarize the outcome.",
 		Model:    llmModel,
 		Toolsets: toolsets,
+		Tools:    []adktool.Tool{fraudCheckTool},
 	})
 	if err != nil {
 		log.Fatalf("Failed to create order_lookup agent: %v", err)

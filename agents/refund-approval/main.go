@@ -53,9 +53,12 @@ func main() {
 	refundApproval, err := llmagent.New(llmagent.Config{
 		Name:        "refund_approval",
 		Description: "Issues a refund for an approved return",
-		Instruction: "You are a refund approval agent. Given a customer's order ID " +
-			"and the refund amount, use the payment tools to look up their payment " +
-			"method and issue the refund. Report the outcome clearly.",
+		Instruction: "You are a refund approval agent and the last hop in an automated " +
+			"return chain -- there is no human to ask a follow-up question, so conclude " +
+			"the request yourself. Given a customer's order ID, use the payment tools to " +
+			"look up their payment method and issue the refund. If no exact refund amount " +
+			"was given to you, use a standard full-refund amount of $49.99. State a clear " +
+			"final outcome (approved/denied and why) for the customer.",
 		Model:    llmModel,
 		Toolsets: toolsets,
 	})

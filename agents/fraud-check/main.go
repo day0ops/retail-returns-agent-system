@@ -14,6 +14,7 @@ import (
 	"github.com/kagent-dev/kagent/go/adk/pkg/app"
 	adkmcp "github.com/kagent-dev/kagent/go/adk/pkg/mcp"
 	"github.com/kagent-dev/kagent/go/adk/pkg/models"
+	adktools "github.com/kagent-dev/kagent/go/adk/pkg/tools"
 	"github.com/kagent-dev/kagent/go/api/adk"
 	"go.uber.org/zap"
 	adkagent "google.golang.org/adk/v2/agent"
@@ -21,6 +22,7 @@ import (
 	"google.golang.org/adk/v2/runner"
 	"google.golang.org/adk/v2/server/adka2a" //nolint:staticcheck // kagent still uses a2a-go v1; this ADK package is the compatibility adapter.
 	adksession "google.golang.org/adk/v2/session"
+	adktool "google.golang.org/adk/v2/tool"
 )
 
 func main() {
@@ -49,15 +51,29 @@ func main() {
 		{Params: adk.StreamableHTTPConnectionParams{Url: envOr("FRAUD_SCORING_URL", "http://localhost:8080/mcp")}},
 	}, nil /* no SSE servers */, true /* propagateToken: forward the customer JWT to MCP calls */, nil /* headerProvider */)
 
+	// Final hop of the A2A chain: hand off to refund_approval once risk is
+	// scored. propagateToken: true forwards the customer's JWT on this
+	// outbound A2A call the same way it's forwarded to the MCP call above.
+	refundApprovalTool, _, err := adktools.NewKAgentRemoteA2ATool(
+		"refund_approval",
+		"Delegates payment method lookup and refund processing to the refund-approval agent",
+		envOr("REFUND_APPROVAL_AGENT_URL", "http://localhost:8083"),
+		nil, nil, true,
+	)
+	if err != nil {
+		log.Fatalf("Failed to create refund_approval A2A tool: %v", err)
+	}
+
 	fraudCheck, err := llmagent.New(llmagent.Config{
 		Name:        "fraud_check",
 		Description: "Scores an order's fraud risk before a refund is approved",
 		Instruction: "You are a fraud review agent. Given an order ID, " +
 			"use the fraud-scoring tools to assess its risk and report the " +
-			"score and risk level. Do not approve or deny refunds yourself -- " +
-			"that's a later stage of this demo.",
+			"score and risk level. Once assessed, delegate to the refund_approval " +
+			"agent to conclude the return chain. Summarize the final outcome.",
 		Model:    llmModel,
 		Toolsets: toolsets,
+		Tools:    []adktool.Tool{refundApprovalTool},
 	})
 	if err != nil {
 		log.Fatalf("Failed to create fraud_check agent: %v", err)
