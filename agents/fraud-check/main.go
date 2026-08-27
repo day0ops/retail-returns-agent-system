@@ -39,10 +39,12 @@ func main() {
 	llmModel, err := models.NewOpenAIModelWithLogger(&models.OpenAIConfig{
 		Model:   envOr("MODEL_NAME", "gpt-4o-mini"),
 		BaseUrl: os.Getenv("LLM_BASE_URL"),
-		// gpt-5.6 (agentgateway's current default, overriding whatever model is
-		// requested here) rejects function tools over /v1/chat/completions unless
-		// reasoning_effort is explicitly "none" -- it's a reasoning-class model.
-		ReasoningEffort: stringPtr("none"),
+		// Reasoning-class models (e.g. gpt-5.6) reject function tools over
+		// /v1/chat/completions unless reasoning_effort is explicitly "none";
+		// standard models neither need nor necessarily accept the param, so it
+		// must stay unset (nil) unless a reasoning model is actually configured
+		// (see MODEL_REASONING_EFFORT in the app manifest).
+		ReasoningEffort: envPtr("MODEL_REASONING_EFFORT"),
 	}, logger)
 	if err != nil {
 		log.Fatalf("Failed to create LLM model: %v", err)
@@ -127,6 +129,12 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
-func stringPtr(s string) *string {
-	return &s
+// envPtr returns a pointer to the env var's value, or nil if unset -- distinct
+// from envOr's fallback-to-default since an unset ReasoningEffort must stay
+// nil (omitted from the request) rather than fall back to some string value.
+func envPtr(key string) *string {
+	if v := os.Getenv(key); v != "" {
+		return &v
+	}
+	return nil
 }
