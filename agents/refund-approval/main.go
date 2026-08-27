@@ -77,9 +77,12 @@ func main() {
 			"method. If no exact refund amount was given to you, use a standard full-refund " +
 			"amount of $49.99. If the refund amount exceeds $75, use the ask_user tool to " +
 			"ask the customer to choose between a cash refund and store credit before " +
-			"issuing it -- do not decide this for them. Below $75, issue a cash refund " +
-			"without asking. State a clear final outcome (approved/denied, amount, and " +
-			"refund method) for the customer.",
+			"calling refund_payment -- do not decide this for them. Below $75, call " +
+			"refund_payment for a cash refund without asking. You must call the " +
+			"refund_payment tool to actually issue the refund in every case -- describing " +
+			"the outcome in your reply without calling it does not count as issuing it. " +
+			"State a clear final outcome (approved/denied, amount, and refund method) for " +
+			"the customer.",
 		Model:    llmModel,
 		Toolsets: toolsets,
 		Tools:    []adktool.Tool{askUserTool},
