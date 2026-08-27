@@ -161,19 +161,29 @@ export interface AskUserQuestion {
 export interface PendingQuestion {
   taskId: string
   contextId: string
-  confirmationId: string
   questions: AskUserQuestion[]
 }
 
-// A paused ask_user call is a Task in the 'input-required' state, carrying one
-// adk_request_confirmation DataPart in status.message.parts. Confirmed against
-// a real fixture in kagent's own hitl_test.go, not inferred:
-//   data: { name: 'adk_request_confirmation', id: <confirmationId>,
-//           args: { originalFunctionCall: { name: 'ask_user', args: { questions } } } }
-//   metadata: { kagent_type: 'function_call', kagent_is_long_running: true }
-// Note the 'kagent_' metadata prefix here, not 'adk_' -- this DataPart shape is
-// constructed by kagent's own HITL code (adk/pkg/a2a/hitl.go), a different
-// convention from the plain ADK tool-call parts extractToolCallSteps reads.
+// A paused chain surfaces as the TOP-level task entering 'input-required',
+// carrying an adk_request_confirmation DataPart in status.message.parts --
+// confirmed live against the real 3-hop chain (order_lookup -> fraud_check ->
+// refund_approval), not just kagent's hitl_test.go fixtures. Two real
+// surprises versus those fixtures:
+//
+// 1. Metadata uses the plain ADK convention (adk_type/adk_is_long_running),
+//    not kagent_type -- ReadMetadataValue in kagent's own hitl.go checks
+//    adk_<key> first, kagent_<key> second, and live traffic hits the first.
+//
+// 2. The question text itself is NOT reachable here. Each hop's
+//    RequestConfirmation (remote_a2a_tool.go:handleInputRequired) only
+//    records the name of its OWN immediate next-hop tool call -- e.g.
+//    support-triage's pending state names "fraud_check" (order_lookup's next
+//    call), not "ask_user". HitlPartInfo has no field for further nesting,
+//    so the real ask_user question -- two more hops down, inside
+//    refund-approval -- genuinely isn't part of this payload; reaching it
+//    would mean a separate tasks/get round-trip per intermediate agent. This
+//    demo only ever asks one question (refund method), so we surface that
+//    statically rather than building a multi-hop task-drilling client for it.
 export function extractPendingQuestion(result: unknown): PendingQuestion | null {
   if (!result || typeof result !== 'object') return null
   const obj = result as Record<string, unknown>
@@ -188,21 +198,20 @@ export function extractPendingQuestion(result: unknown): PendingQuestion | null 
     if (part.kind !== 'data') continue
     const data = part.data as Record<string, unknown> | undefined
     const metadata = part.metadata as Record<string, unknown> | undefined
-    if (metadata?.kagent_type !== 'function_call') continue
-    if (data?.name !== 'adk_request_confirmation' || typeof data.id !== 'string') continue
-
-    const args = data.args as Record<string, unknown> | undefined
-    const originalCall = args?.originalFunctionCall as Record<string, unknown> | undefined
-    if (originalCall?.name !== 'ask_user') continue
-    const callArgs = originalCall.args as Record<string, unknown> | undefined
-    const questions = callArgs?.questions as AskUserQuestion[] | undefined
-    if (!Array.isArray(questions) || questions.length === 0) continue
+    const type = metadata?.adk_type ?? metadata?.kagent_type
+    const isLongRunning = metadata?.adk_is_long_running ?? metadata?.kagent_is_long_running
+    if (type !== 'function_call' || isLongRunning !== true) continue
+    if (data?.name !== 'adk_request_confirmation') continue
 
     return {
       taskId: obj.id as string,
       contextId: obj.contextId as string,
-      confirmationId: data.id,
-      questions,
+      questions: [
+        {
+          question: 'How would you like your refund issued?',
+          choices: ['Cash refund', 'Store credit'],
+        },
+      ],
     }
   }
   return null
@@ -212,21 +221,28 @@ export type AskAgentOutcome =
   | { kind: 'completed'; replyText: string; steps: ToolCallStep[] }
   | { kind: 'input-required'; pending: PendingQuestion }
 
-// Submits the human's answers for a paused ask_user call and resumes the same
-// task -- message.taskId/contextId must match the paused task exactly, or the
-// server starts a new task instead of resuming this one (a2a-go's Message.TaskID/
+// Resumes the paused top-level task with the customer's answer.
+// message.taskId/contextId must match the paused task exactly, or the server
+// starts a new task instead of resuming this one (a2a-go's Message.TaskID/
 // ContextID, both plain top-level fields, confirmed in a2a-go@v0.3.15/a2a/core.go).
-// The resume DataPart mirrors buildConfirmationResponsePart in kagent's hitl.go.
+//
+// Wire shape confirmed against remote_a2a_tool.go's buildDecisionData: a
+// DataPart with decision_type + ask_user_answers, NOT a hand-built
+// ToolConfirmation response part keyed by confirmationId. The server
+// reconstructs the actual FunctionResponse(s) from the STORED task itself
+// (BuildResumeHITLMessage in hitl.go), so the client only ever supplies the
+// decision -- it never needs to know the confirmationId. Critically, a
+// single resume sent to the TOP-level task cascades automatically: each
+// hop's handleResume reads task_id/context_id from its own confirmation
+// payload and relays the same decisionData (including ask_user_answers) to
+// the next hop down, so one round trip resolves the whole 3-hop chain down
+// to refund-approval's actual ask_user pause.
 export async function resumeWithAnswer(
   agentUrl: string,
   pending: PendingQuestion,
   answers: string[][],
   bearerToken: string,
 ): Promise<AskAgentOutcome> {
-  const toolConfirmation = {
-    confirmed: true,
-    payload: { answers: answers.map((answer) => ({ answer })) },
-  }
   const message = {
     kind: 'message',
     messageId: randomUUID(),
@@ -237,11 +253,9 @@ export async function resumeWithAnswer(
       {
         kind: 'data',
         data: {
-          name: 'adk_request_confirmation',
-          id: pending.confirmationId,
-          response: { response: JSON.stringify(toolConfirmation) },
+          decision_type: 'approve',
+          ask_user_answers: answers.map((answer) => ({ answer })),
         },
-        metadata: { kagent_type: 'function_response' },
       },
     ],
   }

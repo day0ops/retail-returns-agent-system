@@ -16,7 +16,6 @@ interface AskUserQuestion {
 interface PendingQuestion {
   taskId: string
   contextId: string
-  confirmationId: string
   questions: AskUserQuestion[]
 }
 
