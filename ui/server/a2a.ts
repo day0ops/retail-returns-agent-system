@@ -53,21 +53,24 @@ export async function sendMessage(
   return { replyText: extractReplyText(json.result), raw: json.result }
 }
 
+function partsToText(parts: unknown): string | null {
+  if (!Array.isArray(parts)) return null
+  const texts = parts
+    .filter((p) => p && typeof p === 'object' && (p as Record<string, unknown>).kind === 'text')
+    .map((p) => (p as Record<string, unknown>).text as string)
+  return texts.length > 0 ? texts.join('\n') : null
+}
+
 // The result can be either a direct Message (immediate reply) or a Task
-// (wraps status.message / history for longer-running interactions). Not
-// independently verified against a live response yet -- confirm the actual
-// shape once Task 6 deploys this, and tighten this extraction if it's wrong.
+// (wraps status.message / history for longer-running interactions). Verified
+// against a real multi-hop A2A chain response (Stage 3): a completed task with
+// tool calls doesn't always carry status.message or an agent-role history
+// entry -- the final text can live only in the last artifact's parts, mixed in
+// alongside function_call/function_response data parts. Checked last since
+// status.message/history are more specific when present.
 export function extractReplyText(result: unknown): string {
   if (!result || typeof result !== 'object') return JSON.stringify(result)
   const obj = result as Record<string, unknown>
-
-  const partsToText = (parts: unknown): string | null => {
-    if (!Array.isArray(parts)) return null
-    const texts = parts
-      .filter((p) => p && typeof p === 'object' && (p as Record<string, unknown>).kind === 'text')
-      .map((p) => (p as Record<string, unknown>).text as string)
-    return texts.length > 0 ? texts.join('\n') : null
-  }
 
   if (obj.kind === 'message') {
     const text = partsToText(obj.parts)
@@ -84,7 +87,59 @@ export function extractReplyText(result: unknown): string {
     const lastAgentMessage = history?.filter((m) => m.role === 'agent').pop()
     const historyText = partsToText(lastAgentMessage?.parts)
     if (historyText) return historyText
+
+    const artifacts = obj.artifacts as Array<Record<string, unknown>> | undefined
+    const lastArtifact = artifacts?.filter((a) => partsToText(a.parts)).pop()
+    const artifactText = partsToText(lastArtifact?.parts)
+    if (artifactText) return artifactText
   }
 
   return JSON.stringify(result)
+}
+
+export interface ToolCallStep {
+  name: string
+  args?: unknown
+  result?: unknown
+  error?: string
+}
+
+// Walks a completed Task's artifacts for function_call/function_response data
+// parts and pairs them up by their shared A2A tool-call id, in call order.
+// Each NewKAgentRemoteA2ATool hop shows up exactly like an MCP tool call does
+// (Stage 2's whoami), so this same shape drives Stage 3's handoff trace.
+export function extractToolCallSteps(result: unknown): ToolCallStep[] {
+  if (!result || typeof result !== 'object') return []
+  const obj = result as Record<string, unknown>
+  if (obj.kind !== 'task') return []
+
+  const artifacts = (obj.artifacts as Array<Record<string, unknown>> | undefined) ?? []
+  const calls = new Map<string, ToolCallStep>()
+  const order: string[] = []
+
+  for (const artifact of artifacts) {
+    const parts = artifact.parts as Array<Record<string, unknown>> | undefined
+    for (const part of parts ?? []) {
+      if (part.kind !== 'data') continue
+      const data = part.data as Record<string, unknown> | undefined
+      const metadata = part.metadata as Record<string, unknown> | undefined
+      if (!data || typeof data.id !== 'string' || typeof data.name !== 'string') continue
+
+      if (metadata?.adk_type === 'function_call') {
+        if (!calls.has(data.id)) order.push(data.id)
+        calls.set(data.id, { ...calls.get(data.id), name: data.name, args: data.args })
+      } else if (metadata?.adk_type === 'function_response') {
+        const response = data.response as Record<string, unknown> | undefined
+        if (!calls.has(data.id)) order.push(data.id)
+        calls.set(data.id, {
+          ...calls.get(data.id),
+          name: data.name,
+          result: response?.output ?? response?.result,
+          error: typeof response?.error === 'string' ? response.error : undefined,
+        })
+      }
+    }
+  }
+
+  return order.map((id) => calls.get(id)!).filter(Boolean)
 }
