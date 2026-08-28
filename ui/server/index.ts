@@ -31,6 +31,18 @@ const config = {
   // hold the identical value in both places, so one shared name rather than
   // a second name that could drift out of sync.
   demoCustomerPassword: requiredEnv('RETAIL_RETURNS_CUSTOMER_PASSWORD'),
+  // Stage 6 (budget control): a second real customer, same password as the
+  // first -- the two sub-scenes only need distinct identities (distinct
+  // jwt.email, for the customerEmail budget dimension), not distinct
+  // credentials.
+  demoCustomer2Username: requiredEnv('DEMO_CUSTOMER_2_USERNAME'),
+  // Direct LLM endpoint the four agents already call (agentgateway's
+  // OpenAI-compatible route) -- Stage 6's "make a paid call" button hits this
+  // directly, carrying the chosen customer's own JWT so agentgateway can
+  // resolve jwt.email for budget enforcement (see agentic-field-kit's
+  // budget-policy feature; the 4 agents' own LLM calls carry no JWT at all
+  // and are unaffected).
+  llmBaseUrl: requiredEnv('LLM_BASE_URL'),
   supportTriageUrl: requiredEnv('SUPPORT_TRIAGE_URL'),
   // Stage 3 (elicitation) calls refund-approval directly rather than through
   // support-triage's full chain -- see the REFUND_APPROVAL_AGENT_URL comment
@@ -55,6 +67,15 @@ let currentCustomerToken: string | null = null
 // in-memory-singleton caveat as currentCustomerToken above -- one presenter,
 // one pending question at a time.
 let pendingElicitation: PendingQuestion | null = null
+
+// Stage 6 (budget control): two customer identities need to be logged in at
+// once (one budgeted Block, one Audit), unlike every other stage's single
+// currentCustomerToken -- a small fixed-size map instead of a second
+// singleton, same demo-scoped "one presenter" caveat otherwise.
+const budgetCustomerTokens: Record<'customer1' | 'customer2', string | null> = {
+  customer1: null,
+  customer2: null,
+}
 
 const app = express()
 app.use(express.json())
@@ -207,6 +228,107 @@ app.get('/api/stage-tool-policy/codemode-comparison', async (_req, res) => {
       listTools(config.orderDbCodemodeMcpUrl),
     ])
     res.json({ before, after })
+  } catch (err) {
+    res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
+  }
+})
+
+// Stage 6 (budget control): headers worth surfacing to the UI from a real
+// budgeted LLM response, if agentgateway's rate-limit-service backend adds
+// them -- not yet confirmed live (checked once this feature is deployed),
+// so this is a permissive substring match rather than an exact allowlist.
+const BUDGET_HEADER_PATTERN = /budget|ratelimit/i
+
+function extractBudgetHeaders(headers: Headers): Record<string, string> {
+  const out: Record<string, string> = {}
+  headers.forEach((value, key) => {
+    if (BUDGET_HEADER_PATTERN.test(key)) out[key] = value
+  })
+  return out
+}
+
+app.post('/api/stage-budget/login', async (req, res) => {
+  const customer = req.body?.customer === 'customer2' ? 'customer2' : 'customer1'
+  const username =
+    customer === 'customer2' ? config.demoCustomer2Username : config.demoCustomerUsername
+  try {
+    const token = await loginResourceOwnerPasswordCredentials({
+      tokenUrl: config.keycloakTokenUrl,
+      clientId: config.keycloakClientId,
+      clientSecret: config.keycloakClientSecret,
+      username,
+      password: config.demoCustomerPassword,
+    })
+    budgetCustomerTokens[customer] = token.access_token
+    res.json({ customer, claims: decodeJwtClaims(token.access_token) })
+  } catch (err) {
+    res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
+  }
+})
+
+interface PaidCallResult {
+  status: number
+  ok: boolean
+  usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number }
+  error?: string
+  budgetHeaders: Record<string, string>
+}
+
+async function makePaidCall(token: string, longResponse: boolean): Promise<PaidCallResult> {
+  const message = longResponse
+    ? 'Write a detailed, friendly 300-word email to a customer explaining our full ' +
+      'return and refund policy, including timelines, item-condition requirements, ' +
+      'and how refunds are issued.'
+    : 'In one sentence, summarize our return policy: refunds within 30 days of purchase.'
+  const res = await fetch(`${config.llmBaseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: message }],
+    }),
+  })
+  const budgetHeaders = extractBudgetHeaders(res.headers)
+  if (!res.ok) {
+    const errorBody = await res.text()
+    return { status: res.status, ok: false, error: errorBody, budgetHeaders }
+  }
+  const body = (await res.json()) as { usage?: PaidCallResult['usage'] }
+  return { status: res.status, ok: true, usage: body.usage, budgetHeaders }
+}
+
+// Sub-scene 1: demo-customer, budgeted Block on Tokens (200/day) -- a single
+// normal-length call already carries enough tokens to cross it, so one click
+// is enough to see it get blocked.
+//
+// Sub-scene 2: demo-customer-2, budgeted Audit on USD ($1/day) -- Audit never
+// blocks, so a single call can't demonstrate anything by itself. Fires a
+// batch of concurrent calls with a deliberately long response per call so the
+// batch's real spend approaches/crosses $1 in one click rather than requiring
+// dozens of individual manual clicks.
+app.post('/api/stage-budget/paid-call', async (req, res) => {
+  const customer = req.body?.customer === 'customer2' ? 'customer2' : 'customer1'
+  const token = budgetCustomerTokens[customer]
+  if (!token) {
+    res
+      .status(401)
+      .json({ error: `not logged in as ${customer} — call /api/stage-budget/login first` })
+    return
+  }
+  try {
+    if (customer === 'customer1') {
+      const result = await makePaidCall(token, false)
+      res.json({ customer, calls: [result] })
+      return
+    }
+    const batchSize = 25
+    const results = await Promise.all(
+      Array.from({ length: batchSize }, () => makePaidCall(token, true)),
+    )
+    res.json({ customer, calls: results })
   } catch (err) {
     res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
   }
