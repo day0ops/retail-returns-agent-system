@@ -10,7 +10,7 @@ import {
   resumeWithAnswer,
   type PendingQuestion,
 } from './a2a.js'
-import { listTools } from './mcp.js'
+import { listTools, callTool } from './mcp.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -54,6 +54,12 @@ const config = {
   // tool-schema comparison for order-db-mcp.
   orderDbMcpUrl: requiredEnv('ORDER_DB_MCP_URL'),
   orderDbCodemodeMcpUrl: requiredEnv('ORDER_DB_CODEMODE_MCP_URL'),
+  // Stage 5 (PII masking): order-db-mcp's own k8s Service, bypassing
+  // agentgateway (and therefore the pii-guardrail-policy feature's
+  // CheckResponse hook) entirely -- a genuinely raw baseline for comparison
+  // against orderDbMcpUrl above, which real agent traffic already flows
+  // through and which now has the guardrail attached.
+  orderDbMcpDirectUrl: requiredEnv('ORDER_DB_MCP_DIRECT_URL'),
 }
 
 // Demo-scoped simplification: a single in-memory "current customer session",
@@ -228,6 +234,26 @@ app.get('/api/stage-tool-policy/codemode-comparison', async (_req, res) => {
       listTools(config.orderDbCodemodeMcpUrl),
     ])
     res.json({ before, after })
+  } catch (err) {
+    res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
+  }
+})
+
+// Stage 5 (PII masking): the same get_order call, once direct to order-db-mcp's
+// own Service (raw, agentgateway and its pii-guardrail-policy never see it) and
+// once through the real agentgateway route real agents already use (now
+// carrying the guardrail hook), for a side-by-side redacted-vs-not comparison.
+app.get('/api/stage-pii/compare', async (_req, res) => {
+  if (!currentCustomerToken) {
+    res.status(401).json({ error: 'not logged in — call /api/stage2/login first' })
+    return
+  }
+  try {
+    const [raw, masked] = await Promise.all([
+      callTool(config.orderDbMcpDirectUrl, 'get_order', { order_id: 'ORD-1001' }),
+      callTool(config.orderDbMcpUrl, 'get_order', { order_id: 'ORD-1001' }, currentCustomerToken),
+    ])
+    res.json({ raw, masked })
   } catch (err) {
     res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
   }

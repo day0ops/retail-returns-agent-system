@@ -105,3 +105,50 @@ export async function listTools(mcpUrl: string, bearerToken?: string): Promise<M
   const tools = (result as { tools?: McpTool[] } | undefined)?.tools
   return Array.isArray(tools) ? tools : []
 }
+
+// Same initialize -> notifications/initialized handshake as listTools, but
+// finishing with tools/call -- used by Stage 5 (PII masking) to fetch a real
+// tool result both raw (direct to the MCP server) and masked (through
+// agentgateway's pii-guardrail-policy) for a side-by-side comparison.
+export async function callTool(
+  mcpUrl: string,
+  toolName: string,
+  args: Record<string, unknown>,
+  bearerToken?: string,
+): Promise<unknown> {
+  const { sessionId } = await mcpCall(
+    mcpUrl,
+    {
+      jsonrpc: '2.0',
+      id: randomUUID(),
+      method: 'initialize',
+      params: {
+        protocolVersion: '2025-03-26',
+        capabilities: {},
+        clientInfo: { name: 'retail-returns-ui-bff', version: '0.1.0' },
+      },
+    },
+    null,
+    bearerToken,
+  )
+
+  await mcpCall(
+    mcpUrl,
+    { jsonrpc: '2.0', method: 'notifications/initialized' },
+    sessionId,
+    bearerToken,
+  )
+
+  const { result } = await mcpCall(
+    mcpUrl,
+    {
+      jsonrpc: '2.0',
+      id: randomUUID(),
+      method: 'tools/call',
+      params: { name: toolName, arguments: args },
+    },
+    sessionId,
+    bearerToken,
+  )
+  return result
+}

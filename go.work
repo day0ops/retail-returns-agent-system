@@ -10,4 +10,5 @@ use (
 	./mcp-servers/shipping
 	./mcp-servers/inventory
 	./mcp-servers/fraud-scoring
+	./mcp-servers/pii-guardrail
 )
