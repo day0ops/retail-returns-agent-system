@@ -76,7 +76,11 @@ func main() {
 		Instruction: "You are a retail order lookup agent. Given an order ID, " +
 			"use the order-db tools to fetch the order and the shipping tools " +
 			"to fetch its shipment status. Once confirmed, delegate to the " +
-			"fraud_check agent to continue the return chain. Summarize the outcome.",
+			"fraud_check agent to continue the return chain. Your request to fraud_check " +
+			"MUST state the order's exact dollar amount and order ID as returned by the " +
+			"order-db tool -- never paraphrase, round, or omit them, since refund_approval " +
+			"at the end of the chain needs the exact figure to decide whether to ask the " +
+			"customer a follow-up question. Summarize the outcome.",
 		Model:    llmModel,
 		Toolsets: toolsets,
 		Tools:    []adktool.Tool{fraudCheckTool},

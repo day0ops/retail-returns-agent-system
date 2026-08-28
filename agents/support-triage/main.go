@@ -77,6 +77,10 @@ func main() {
 			"use the order-db tools to look up their order, then delegate to the " +
 			"order_lookup agent to verify shipment details and continue the return chain " +
 			"(order_lookup hands off to fraud_check, which hands off to refund_approval). " +
+			"Your request to order_lookup MUST state the order's exact dollar amount and " +
+			"order ID as returned by the order-db tool -- never paraphrase, round, or omit " +
+			"them, since refund_approval at the end of the chain needs the exact figure to " +
+			"decide whether to ask the customer a follow-up question. " +
 			"Summarize the final outcome for the customer. Do not process refunds yourself.",
 		Model:    llmModel,
 		Toolsets: toolsets,

@@ -45,6 +45,13 @@ func main() {
 		// must stay unset (nil) unless a reasoning model is actually configured
 		// (see MODEL_REASONING_EFFORT in the app manifest).
 		ReasoningEffort: envPtr("MODEL_REASONING_EFFORT"),
+		// Low, not zero: the $75 ask_user rule is a deterministic business rule,
+		// not a creative task, and this agent measurably skipped it under
+		// default temperature (live-tested: 3/12 fresh runs correctly knew the
+		// exact refund amount exceeded $75 yet still auto-decided without
+		// asking). Some variance is kept rather than 0 so the demo doesn't feel
+		// robotic across its other free-text summaries.
+		Temperature: floatPtr(0.2),
 	}, logger)
 	if err != nil {
 		log.Fatalf("Failed to create LLM model: %v", err)
@@ -73,11 +80,14 @@ func main() {
 			"return chain -- there is no human to ask a follow-up question about anything " +
 			"except the refund method below, so conclude the request yourself otherwise. " +
 			"Given a customer's order ID, use the payment tools to look up their payment " +
-			"method. If no exact refund amount was given to you, use a standard full-refund " +
-			"amount of $49.99. If the refund amount exceeds $75, use the ask_user tool to " +
-			"ask the customer to choose between a cash refund and store credit before " +
-			"issuing it -- do not decide this for them. Below $75, issue a cash refund " +
-			"without asking. State a clear final outcome (approved/denied, amount, and " +
+			"method, then determine the refund amount: use the exact amount you were given " +
+			"if one was given, otherwise a standard full-refund amount of $49.99. " +
+			"The $75 refund-method rule is mandatory, not a judgment call: if the refund " +
+			"amount exceeds $75, you MUST call the ask_user tool to ask the customer to " +
+			"choose between a cash refund and store credit BEFORE calling refund_payment -- " +
+			"you are not permitted to call refund_payment first or decide the method " +
+			"yourself. Below $75, call refund_payment directly with a cash refund, no " +
+			"question needed. State a clear final outcome (approved/denied, amount, and " +
 			"refund method) for the customer.",
 		Model:    llmModel,
 		Toolsets: toolsets,
@@ -140,4 +150,10 @@ func envPtr(key string) *string {
 		return &v
 	}
 	return nil
+}
+
+// floatPtr returns a pointer to v -- OpenAIConfig.Temperature is a *float64
+// so an unset value can be told apart from an explicit 0.
+func floatPtr(v float64) *float64 {
+	return &v
 }
