@@ -37,8 +37,8 @@ describe('extractReplyText', () => {
       status: {},
       history: [
         { role: 'user', parts: [{ kind: 'text', text: 'question' }] },
-        { role: 'agent', parts: [{ kind: 'text', text: 'first answer' }] },
-        { role: 'agent', parts: [{ kind: 'text', text: 'final answer' }] },
+        { role: 'ROLE_AGENT', parts: [{ kind: 'text', text: 'first answer' }] },
+        { role: 'ROLE_AGENT', parts: [{ kind: 'text', text: 'final answer' }] },
       ],
     }
     expect(extractReplyText(result)).toBe('final answer')
@@ -169,59 +169,58 @@ describe('extractToolCallSteps', () => {
 })
 
 describe('extractPendingQuestion', () => {
-  // Shape confirmed live against the real 3-hop chain (order_lookup ->
-  // fraud_check -> refund_approval), not just kagent's hitl_test.go
-  // fixtures -- live traffic uses the 'adk_' metadata prefix (checked first
-  // by kagent's own ReadMetadataValue), and the DataPart's originalFunctionCall
-  // only ever names the immediate next hop, never 'ask_user' itself no matter
-  // how deep the real pause is. See extractPendingQuestion's own comment.
+  const HITL_EXT = 'https://kagent.dev/extensions/hitl/v1'
+
+  // Shape confirmed live against the real 4-hop chain (support-triage ->
+  // order_lookup -> fraud_check -> refund_approval): a nested pause still
+  // exposes the real, dynamic question at the top-level `questions` field
+  // (mirrored from `nested.tools[0].args.questions`) regardless of how deep
+  // the actual ask_user call is -- unlike the old adk_request_confirmation
+  // convention, no generic placeholder fallback is needed here anymore.
   function inputRequiredTask(overrides: Record<string, unknown> = {}) {
     return {
       kind: 'task',
       id: 'task_1',
       contextId: 'ctx_1',
       status: {
-        state: 'input-required',
+        state: 'TASK_STATE_INPUT_REQUIRED',
         message: {
-          role: 'agent',
-          parts: [
-            {
-              kind: 'data',
-              data: {
-                name: 'adk_request_confirmation',
-                id: 'confirm_1',
-                args: {
-                  originalFunctionCall: { name: 'fraud_check', id: 'call_1', args: {} },
-                  toolConfirmation: {
-                    confirmed: false,
-                    hint: "Remote agent 'order_lookup' requires approval for tool(s): fraud_check",
-                    payload: {
-                      task_id: 'task_ol_1',
-                      context_id: 'ctx_ol_1',
-                      subagent_name: 'order_lookup',
-                    },
-                  },
+          role: 'ROLE_AGENT',
+          extensions: [HITL_EXT],
+          metadata: {
+            [HITL_EXT]: {
+              type: 'ask_user_request',
+              questions: [
+                {
+                  question:
+                    'Your refund amount exceeds $75. Please choose your preferred refund method: Cash or Store Credit?',
+                  choices: ['Cash', 'Store Credit'],
                 },
+              ],
+              nested: {
+                subagent_name: 'order_lookup',
+                task_id: 'task_ol_1',
+                context_id: 'ctx_ol_1',
+                tools: [{ id: 'adk-child-1', call_id: 'adk-child-1', name: 'ask_user' }],
               },
-              metadata: { adk_type: 'function_call', adk_is_long_running: true },
             },
-          ],
+          },
         },
       },
       ...overrides,
     }
   }
 
-  it('extracts the pending question from an input-required task', () => {
+  it('extracts the pending question from a nested input-required task', () => {
     expect(extractPendingQuestion(inputRequiredTask())).toEqual({
       taskId: 'task_1',
       contextId: 'ctx_1',
-      confirmationId: 'confirm_1',
-      payload: { task_id: 'task_ol_1', context_id: 'ctx_ol_1', subagent_name: 'order_lookup' },
+      resumeId: 'adk-child-1',
       questions: [
         {
-          question: 'How would you like your refund issued?',
-          choices: ['Cash refund', 'Store credit'],
+          question:
+            'Your refund amount exceeds $75. Please choose your preferred refund method: Cash or Store Credit?',
+          choices: ['Cash', 'Store Credit'],
         },
       ],
     })
@@ -229,55 +228,41 @@ describe('extractPendingQuestion', () => {
 
   it('returns null for a completed task', () => {
     const task = inputRequiredTask()
-    task.status.state = 'completed'
+    task.status.state = 'TASK_STATE_COMPLETED'
     expect(extractPendingQuestion(task)).toBeNull()
   })
 
   // Shape confirmed live calling refund-approval directly (Stage 4, one hop
-  // from the caller) -- unlike the nested case above, originalFunctionCall
-  // names 'ask_user' itself here, with the real question/choices reachable,
-  // and toolConfirmation.payload is null rather than an object.
+  // from the caller) -- no `nested` object, so the resume id is the request's
+  // own top-level `id`.
   it('surfaces the real question/choices for a direct ask_user pause', () => {
     const task = {
       kind: 'task',
       id: 'task_2',
       contextId: 'ctx_2',
       status: {
-        state: 'input-required',
+        state: 'TASK_STATE_INPUT_REQUIRED',
         message: {
-          parts: [
-            {
-              kind: 'data',
-              data: {
-                name: 'adk_request_confirmation',
-                id: 'confirm_2',
-                args: {
-                  originalFunctionCall: {
-                    name: 'ask_user',
-                    id: 'call_2',
-                    args: {
-                      questions: [
-                        {
-                          question: 'The refund amount exceeds $75. Cash or store credit?',
-                          choices: ['Cash Refund', 'Store Credit'],
-                        },
-                      ],
-                    },
-                  },
-                  toolConfirmation: { confirmed: false, hint: '...', payload: null },
+          extensions: [HITL_EXT],
+          metadata: {
+            [HITL_EXT]: {
+              type: 'ask_user_request',
+              id: 'adk-direct-1',
+              questions: [
+                {
+                  question: 'The refund amount exceeds $75. Cash or store credit?',
+                  choices: ['Cash Refund', 'Store Credit'],
                 },
-              },
-              metadata: { adk_type: 'function_call', adk_is_long_running: true },
+              ],
             },
-          ],
+          },
         },
       },
     }
     expect(extractPendingQuestion(task)).toEqual({
       taskId: 'task_2',
       contextId: 'ctx_2',
-      confirmationId: 'confirm_2',
-      payload: {},
+      resumeId: 'adk-direct-1',
       questions: [
         {
           question: 'The refund amount exceeds $75. Cash or store credit?',
@@ -287,25 +272,10 @@ describe('extractPendingQuestion', () => {
     })
   })
 
-  it('also recognizes the kagent_ metadata prefix (fallback convention)', () => {
-    const task = {
-      kind: 'task',
-      id: 'task_1',
-      contextId: 'ctx_1',
-      status: {
-        state: 'input-required',
-        message: {
-          parts: [
-            {
-              kind: 'data',
-              data: { name: 'adk_request_confirmation', id: 'confirm_1' },
-              metadata: { kagent_type: 'function_call', kagent_is_long_running: true },
-            },
-          ],
-        },
-      },
-    }
-    expect(extractPendingQuestion(task)).not.toBeNull()
+  it('returns null when the extension was not activated', () => {
+    const task = inputRequiredTask()
+    task.status.message.extensions = []
+    expect(extractPendingQuestion(task)).toBeNull()
   })
 
   it('returns null for a non-task result', () => {
@@ -313,6 +283,8 @@ describe('extractPendingQuestion', () => {
   })
 
   it('returns null when there is no message on the status', () => {
-    expect(extractPendingQuestion({ kind: 'task', status: { state: 'input-required' } })).toBeNull()
+    expect(
+      extractPendingQuestion({ kind: 'task', status: { state: 'TASK_STATE_INPUT_REQUIRED' } }),
+    ).toBeNull()
   })
 })
