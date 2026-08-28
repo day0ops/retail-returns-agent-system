@@ -233,6 +233,38 @@ app.get('/api/stage-tool-policy/codemode-comparison', async (_req, res) => {
   }
 })
 
+// Stage 4 (tool policy): a fixed, low-value demo order (ORD-1002, $12.50, well
+// under refund-approval's own $75 ask_user threshold) routed through the full
+// support-triage -> order_lookup -> fraud_check -> refund_approval chain, so
+// no elicitation pause happens here at all -- this stage is deliberately
+// isolated from Stage 3's. refund_approval calls refund_payment directly, and
+// agentgateway's identity-based mcp.authorization Deny policy
+// (agentic-field-kit's mcp-tool-policy feature, 'customers' in jwt.Groups)
+// blocks it regardless of amount or what the LLM decided. No /answer
+// companion endpoint is needed -- this is a single deterministic deny, not a
+// paused task waiting on a human choice.
+const TOOL_POLICY_DEMO_MESSAGE =
+  'Process a return for order ORD-1002: USB-C Charging Cable, purchased for $12.50 ' +
+  'on 2026-07-15, delivered by FastShip (tracking FS100200), for customer CUST-100. ' +
+  'Please process the full refund.'
+
+app.post('/api/stage-tool-policy/ask', async (_req, res) => {
+  if (!currentCustomerToken) {
+    res.status(401).json({ error: 'not logged in — call /api/stage2/login first' })
+    return
+  }
+  try {
+    const result = await sendMessage(
+      config.supportTriageUrl,
+      TOOL_POLICY_DEMO_MESSAGE,
+      currentCustomerToken,
+    )
+    res.json({ replyText: result.replyText, steps: extractToolCallSteps(result.raw) })
+  } catch (err) {
+    res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
+  }
+})
+
 // Stage 5 (PII masking): the same get_order call, once direct to order-db-mcp's
 // own Service (raw, agentgateway and its pii-guardrail-policy never see it) and
 // once through the real agentgateway route real agents already use (now
