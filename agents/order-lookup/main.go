@@ -8,19 +8,18 @@ import (
 	"log"
 	"os"
 
-	a2atype "github.com/a2aproject/a2a-go/a2a"
+	a2atype "github.com/a2aproject/a2a-go/v2/a2a"
 	"github.com/go-logr/logr"
 	"github.com/go-logr/zapr"
+	kagenta2a "github.com/kagent-dev/kagent/go/adk/pkg/a2a"
 	"github.com/kagent-dev/kagent/go/adk/pkg/app"
 	adkmcp "github.com/kagent-dev/kagent/go/adk/pkg/mcp"
 	"github.com/kagent-dev/kagent/go/adk/pkg/models"
 	adktools "github.com/kagent-dev/kagent/go/adk/pkg/tools"
 	"github.com/kagent-dev/kagent/go/api/adk"
 	"go.uber.org/zap"
-	adkagent "google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/agent/llmagent"
 	"google.golang.org/adk/v2/runner"
-	"google.golang.org/adk/v2/server/adka2a" //nolint:staticcheck // kagent still uses a2a-go v1; this ADK package is the compatibility adapter.
 	adksession "google.golang.org/adk/v2/session"
 	adktool "google.golang.org/adk/v2/tool"
 )
@@ -56,7 +55,7 @@ func main() {
 	toolsets := adkmcp.CreateToolsets(ctx, []adk.HttpMcpServerConfig{
 		{Params: adk.StreamableHTTPConnectionParams{Url: envOr("ORDER_DB_URL", "http://localhost:8080/mcp")}},
 		{Params: adk.StreamableHTTPConnectionParams{Url: envOr("SHIPPING_URL", "http://localhost:8081/mcp")}},
-	}, nil /* no SSE servers */, true /* propagateToken: forward the customer JWT to MCP calls */, nil /* headerProvider */)
+	}, nil /* no SSE servers */, nil /* no stdio servers */, true /* propagateToken: forward the customer JWT to MCP calls */, nil /* headerProvider */)
 
 	// Next hop of the A2A chain: hand off to fraud_check once order/shipment
 	// details are confirmed. propagateToken: true forwards the customer's JWT
@@ -91,19 +90,20 @@ func main() {
 		Agent:          orderLookup,
 		SessionService: adksession.InMemoryService(),
 	}
-	var runConfig adkagent.RunConfig
-	runConfig.StreamingMode = adkagent.StreamingModeSSE
-	executor := adka2a.NewExecutor(adka2a.ExecutorConfig{RunnerConfig: runnerConfig, RunConfig: runConfig})
+	executor := kagenta2a.NewKAgentExecutor(kagenta2a.KAgentExecutorConfig{
+		RunnerConfig: runnerConfig,
+		Stream:       true,
+		AppName:      "order-lookup",
+		Logger:       logger,
+	})
 
 	kagentApp, err := app.New(app.AppConfig{
 		AgentCard: a2atype.AgentCard{
 			Name:        "order-lookup",
 			Description: "Retail order lookup agent -- fetches order and shipment details",
 			Version:     "0.1.0",
-			URL:         envOr("AGENT_CARD_URL", "http://localhost:8080"),
 			Capabilities: a2atype.AgentCapabilities{
-				Streaming:              true,
-				StateTransitionHistory: true,
+				Streaming: true,
 			},
 			DefaultInputModes:  []string{"text/plain"},
 			DefaultOutputModes: []string{"text/plain"},
