@@ -31,17 +31,23 @@ describe('extractReplyText', () => {
     expect(extractReplyText(result)).toBe('Working on it.')
   })
 
-  it('falls back to the last agent message in Task history', () => {
+  it('ignores a stale HITL pause message in Task history, using the real artifact instead', () => {
+    // Confirmed live: after a HITL resume, history's only ROLE_AGENT entry is
+    // the ORIGINAL pause notification (the question itself), not the eventual
+    // reply -- the real final text lives only in the last artifact. Regression
+    // test for a real bug: an earlier version of extractReplyText fell back to
+    // this stale history entry before ever checking artifacts.
     const result = {
       kind: 'task',
       status: {},
       history: [
         { role: 'user', parts: [{ kind: 'text', text: 'question' }] },
-        { role: 'ROLE_AGENT', parts: [{ kind: 'text', text: 'first answer' }] },
-        { role: 'ROLE_AGENT', parts: [{ kind: 'text', text: 'final answer' }] },
+        { role: 'ROLE_AGENT', parts: [{ kind: 'text', text: 'Cash or store credit?' }] },
+        { role: 'user', parts: [{ kind: 'text', text: 'Human input supplied' }] },
       ],
+      artifacts: [{ parts: [{ text: 'The refund has been approved and issued.' }] }],
     }
-    expect(extractReplyText(result)).toBe('final answer')
+    expect(extractReplyText(result)).toBe('The refund has been approved and issued.')
   })
 
   it('falls back to raw JSON when no recognizable text is found', () => {

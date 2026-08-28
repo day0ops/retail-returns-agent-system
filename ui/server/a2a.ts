@@ -104,12 +104,15 @@ function partsToText(parts: unknown): string | null {
 }
 
 // The result can be either a direct Message (immediate reply) or a Task
-// (wraps status.message / history for longer-running interactions). Verified
-// against a real multi-hop A2A chain response (Stage 3): a completed task with
-// tool calls doesn't always carry status.message or an agent-role history
-// entry -- the final text can live only in the last artifact's parts, mixed in
-// alongside function_call/function_response data parts. Checked last since
-// status.message/history are more specific when present.
+// (wraps status.message / artifacts for longer-running interactions).
+// Verified against a real A2A chain response (Stage 3): a completed task's
+// final text lives only in the last artifact's parts, mixed in alongside
+// function_call/function_response data parts -- status.message is absent on
+// a completed task, and `history`'s only ROLE_AGENT entry (if HITL paused
+// this task at some point) is the STALE original pause notification, not the
+// eventual reply, so history is not a reliable fallback for the final text in
+// this wire protocol (confirmed live: it returns the original question, not
+// the actual outcome, for any task that went through a HITL pause/resume).
 export function extractReplyText(result: unknown): string {
   if (!result || typeof result !== 'object') return JSON.stringify(result)
   const obj = result as Record<string, unknown>
@@ -124,11 +127,6 @@ export function extractReplyText(result: unknown): string {
     const statusMessage = status?.message as Record<string, unknown> | undefined
     const text = partsToText(statusMessage?.parts)
     if (text) return text
-
-    const history = obj.history as Array<Record<string, unknown>> | undefined
-    const lastAgentMessage = history?.filter((m) => m.role === 'ROLE_AGENT').pop()
-    const historyText = partsToText(lastAgentMessage?.parts)
-    if (historyText) return historyText
 
     const artifacts = obj.artifacts as Array<Record<string, unknown>> | undefined
     const lastArtifact = artifacts?.filter((a) => partsToText(a.parts)).pop()
