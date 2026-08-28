@@ -61,11 +61,11 @@ func main() {
 	// First hop of the A2A chain: hand off eligibility/fraud/refund work to
 	// order-lookup. propagateToken: true forwards the customer's JWT on this
 	// outbound A2A call the same way it's forwarded to order-db above.
-	orderLookupTool, _, err := adktools.NewKAgentRemoteA2ATool(
+	orderLookupTool, err := adktools.NewKAgentRemoteA2ATool(
 		"order_lookup",
 		"Delegates order and shipment detail lookup to the order-lookup agent",
 		envOr("ORDER_LOOKUP_AGENT_URL", "http://localhost:8081"),
-		nil, nil, true,
+		nil, nil, true, false,
 	)
 	if err != nil {
 		log.Fatalf("Failed to create order_lookup A2A tool: %v", err)

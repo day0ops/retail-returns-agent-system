@@ -61,11 +61,11 @@ func main() {
 	// Next hop of the A2A chain: hand off to fraud_check once order/shipment
 	// details are confirmed. propagateToken: true forwards the customer's JWT
 	// on this outbound A2A call the same way it's forwarded to the MCP calls above.
-	fraudCheckTool, _, err := adktools.NewKAgentRemoteA2ATool(
+	fraudCheckTool, err := adktools.NewKAgentRemoteA2ATool(
 		"fraud_check",
 		"Delegates transaction fraud risk scoring to the fraud-check agent",
 		envOr("FRAUD_CHECK_AGENT_URL", "http://localhost:8082"),
-		nil, nil, true,
+		nil, nil, true, false,
 	)
 	if err != nil {
 		log.Fatalf("Failed to create fraud_check A2A tool: %v", err)
