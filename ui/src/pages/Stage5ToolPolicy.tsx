@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { ArrowRight, Code2, ShieldX, XCircle, CheckCircle2 } from 'lucide-react'
+import { ArrowRight, Code2, ShieldX, ShieldCheck, XCircle, CheckCircle2 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ThemeToggle } from '@/components/theme-toggle'
 import type { StageProps } from '@/pages/stage-props'
 
@@ -38,20 +40,26 @@ interface DenyCheckResponse {
  * Stage5ToolPolicy is the guided tour's fifth stop, "Stage 4" in the design
  * doc's capability numbering, with two independent sub-scenes:
  *
- * 1. Tool policy: a fixed, low-value demo order (ORD-1002, $12.50) routed
- *    through the full support-triage -> ... -> refund-approval chain.
- *    refund-approval calls refund_payment directly (well under its own $75
- *    ask_user threshold, so no elicitation happens here) -- agentgateway's
- *    identity-based mcp.authorization Deny policy (agentic-field-kit's
- *    mcp-tool-policy feature, 'customers' in jwt.Groups) blocks the call
- *    regardless of amount or what the LLM decided. Originally dropped after
- *    an extended live-debugging investigation seemed to show the mechanism
- *    couldn't block tools/call at all; a later re-verification (see
- *    agentic-field-kit's docs/superpowers/plans/2026-08-27-retail-returns-
- *    phase6-tool-policy.md, "Eighth note") found the earlier conclusion was a
- *    test-harness artifact, not a gateway bug -- the Deny genuinely blocks
- *    the call (an MCP-layer "Unknown tool" error, since the denied tool is
- *    simply absent from the gateway's per-session view).
+ * 1. Tool policy (clickops): a presenter's "Apply policy" / "Remove policy"
+ *    button controls whether agentgateway's identity-based mcp.authorization
+ *    Deny policy ('customers' in jwt.Groups on refund_payment) actually
+ *    exists in the cluster, via stage-policy-controller (an internal,
+ *    non-customer-facing service the BFF calls). Deliberately NOT
+ *    pre-provisioned: the Deny can only express an identity check, never an
+ *    amount check (call arguments are never populated at authorization-check
+ *    time), so it's indiscriminate across every customer-identity
+ *    refund_payment call in the whole demo -- pre-provisioning it
+ *    unconditionally would silently change Stage 3's own outcome before a
+ *    presenter ever reaches this stage. Once applied, a fixed low-value demo
+ *    order (ORD-1002, $12.50) is routed through the full support-triage ->
+ *    ... -> refund-approval chain (well under refund-approval's own $75
+ *    ask_user threshold, so no elicitation happens here). Confirmed live
+ *    (agentic-field-kit's docs/superpowers/plans/2026-08-27-retail-returns-
+ *    phase6-tool-policy.md, "Eighth note") that the Deny genuinely blocks
+ *    the call once applied (an MCP-layer "Unknown tool" error, since the
+ *    denied tool is simply absent from the gateway's per-session view) --
+ *    an earlier investigation's "doesn't work" conclusion was a
+ *    test-harness artifact, not a gateway bug.
  * 2. Progressive disclosure: order-db-mcp's tool catalog collapsed into one
  *    code-execution meta-tool via entMcp.codeMode.
  */
@@ -63,6 +71,34 @@ export function Stage5ToolPolicy({ onNext }: StageProps) {
   const [denyResponse, setDenyResponse] = useState<DenyCheckResponse | null>(null)
   const [denyError, setDenyError] = useState<string | null>(null)
   const [checking, setChecking] = useState(false)
+
+  // null while the initial status fetch is in flight -- distinct from
+  // false, so the buttons don't flash an incorrect state on page load.
+  const [policyApplied, setPolicyApplied] = useState<boolean | null>(null)
+  const [policyError, setPolicyError] = useState<string | null>(null)
+  const [policyBusy, setPolicyBusy] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/stage-tool-policy/policy-status')
+      .then((res) => res.json())
+      .then((body) => setPolicyApplied(Boolean(body.applied)))
+      .catch((err) => setPolicyError(err instanceof Error ? err.message : String(err)))
+  }, [])
+
+  async function handlePolicyToggle(action: 'apply-policy' | 'remove-policy') {
+    setPolicyBusy(true)
+    setPolicyError(null)
+    try {
+      const res = await fetch(`/api/stage-tool-policy/${action}`, { method: 'POST' })
+      const body = await res.json()
+      if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`)
+      setPolicyApplied(Boolean(body.applied))
+    } catch (err) {
+      setPolicyError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setPolicyBusy(false)
+    }
+  }
 
   async function handleCompare() {
     setComparing(true)
@@ -117,17 +153,62 @@ export function Stage5ToolPolicy({ onNext }: StageProps) {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <ShieldX className="size-4" /> Attempt a refund
+              <ShieldX className="size-4" /> Refund identity policy
             </CardTitle>
             <CardDescription>
-              Asks support-triage to process a return for a low-value order (ORD-1002, $12.50) via
-              the full A2A chain -- well under refund-approval's own $75 ask_user threshold, so no
-              human input is needed here. refund-approval calls refund_payment directly, and
-              agentgateway independently blocks it: the customer's own identity can never directly
-              execute a real money movement, regardless of amount or what the LLM decided.
+              A hard identity-based deny on refund_payment, enforced at agentgateway independent of
+              what the LLM decides -- the customer's own identity can never directly execute a real
+              money movement, regardless of amount. Applied on demand, not pre-provisioned: it can't
+              be scoped to just this demo order, so it's off until you turn it on here.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    onClick={() => handlePolicyToggle('apply-policy')}
+                    disabled={policyBusy || policyApplied === true}
+                    variant="outline"
+                    className="w-fit"
+                  >
+                    {policyBusy ? 'Working…' : 'Apply policy'}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Creates agentgateway's Deny policy (mcp.tool.name == 'refund_payment' &amp;&amp;
+                  'customers' in jwt.Groups) on payment-mcp's live Backend.
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    onClick={() => handlePolicyToggle('remove-policy')}
+                    disabled={policyBusy || policyApplied === false}
+                    variant="outline"
+                    className="w-fit"
+                  >
+                    {policyBusy ? 'Working…' : 'Remove policy'}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Deletes the Deny policy -- refund_payment becomes callable by any customer
+                  identity again, as it was before this stage.
+                </TooltipContent>
+              </Tooltip>
+              {policyApplied !== null && (
+                <Badge variant={policyApplied ? 'destructive' : 'secondary'} className="gap-1">
+                  {policyApplied ? (
+                    <ShieldX className="size-3" />
+                  ) : (
+                    <ShieldCheck className="size-3" />
+                  )}
+                  {policyApplied ? 'Policy applied' : 'Policy not applied'}
+                </Badge>
+              )}
+            </div>
+            {policyError && <p className="text-destructive text-sm">{policyError}</p>}
+
             <Button onClick={handleDenyCheck} disabled={checking} className="w-fit">
               {checking ? 'Processing…' : 'Attempt refund for ORD-1002'}
             </Button>

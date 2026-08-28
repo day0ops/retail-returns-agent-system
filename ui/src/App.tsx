@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { Stage1Topology } from '@/pages/Stage1Topology'
 import { Stage2TokenExchange } from '@/pages/Stage2TokenExchange'
 import { Stage3A2AHandoff } from '@/pages/Stage3A2AHandoff'
@@ -29,9 +30,11 @@ function App() {
   const Stage = STAGES[stageIndex]
 
   return (
-    <Stage
-      onNext={stageIndex < STAGES.length - 1 ? () => setStageIndex(stageIndex + 1) : undefined}
-    />
+    <TooltipProvider>
+      <Stage
+        onNext={stageIndex < STAGES.length - 1 ? () => setStageIndex(stageIndex + 1) : undefined}
+      />
+    </TooltipProvider>
   )
 }
 

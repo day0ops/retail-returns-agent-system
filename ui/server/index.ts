@@ -58,6 +58,15 @@ const config = {
   // immediate tool calls, confirmed live -- see the '/api/stage-tool-policy/
   // ask' handler's comment).
   paymentMcpUrl: requiredEnv('PAYMENT_MCP_URL'),
+  // Stage 4 (tool policy, clickops apply/remove): stage-policy-controller's own
+  // internal Service DNS -- not customer-facing, only this BFF calls it. Lets a
+  // presenter's "Apply policy" / "Remove policy" button control whether the
+  // Deny actually exists in the cluster, instead of it being pre-provisioned
+  // (and therefore also silently affecting Stage 3's own refund_payment call,
+  // before a presenter ever reaches Stage 4 -- the Deny can't be scoped to
+  // just this stage's demo order, since mcp.authorization can only see tool
+  // identity + jwt claims, never call arguments).
+  stagePolicyControllerUrl: requiredEnv('STAGE_POLICY_CONTROLLER_URL'),
   // Stage 5 (PII masking): order-db-mcp's own k8s Service, bypassing
   // agentgateway (and therefore the pii-guardrail-policy feature's
   // CheckResponse hook) entirely -- a genuinely raw baseline for comparison
@@ -242,16 +251,53 @@ app.get('/api/stage-tool-policy/codemode-comparison', async (_req, res) => {
   }
 })
 
+// Stage 4 (tool policy, clickops): whether the Deny actually exists in the
+// cluster is presenter-controlled, not pre-provisioned -- proxies straight
+// through to stage-policy-controller's own internal API. No request/response
+// transformation needed here; the controller's shape already matches what
+// the UI wants ({ applied: boolean, ... }).
+async function callPolicyController(path: string, method: 'GET' | 'POST'): Promise<unknown> {
+  const res = await fetch(`${config.stagePolicyControllerUrl}${path}`, { method })
+  const body = await res.json()
+  if (!res.ok) throw new Error(typeof body === 'string' ? body : JSON.stringify(body))
+  return body
+}
+
+app.post('/api/stage-tool-policy/apply-policy', async (_req, res) => {
+  try {
+    res.json(await callPolicyController('/stages/tool-policy/apply', 'POST'))
+  } catch (err) {
+    res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
+  }
+})
+
+app.post('/api/stage-tool-policy/remove-policy', async (_req, res) => {
+  try {
+    res.json(await callPolicyController('/stages/tool-policy/remove', 'POST'))
+  } catch (err) {
+    res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
+  }
+})
+
+app.get('/api/stage-tool-policy/policy-status', async (_req, res) => {
+  try {
+    res.json(await callPolicyController('/stages/tool-policy/status', 'GET'))
+  } catch (err) {
+    res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
+  }
+})
+
 // Stage 4 (tool policy): a fixed, low-value demo order (ORD-1002, $12.50, well
 // under refund-approval's own $75 ask_user threshold) routed through the full
 // support-triage -> order_lookup -> fraud_check -> refund_approval chain, so
 // no elicitation pause happens here at all -- this stage is deliberately
 // isolated from Stage 3's. refund_approval calls refund_payment directly, and
-// agentgateway's identity-based mcp.authorization Deny policy
-// (agentic-field-kit's mcp-tool-policy feature, 'customers' in jwt.Groups)
-// blocks it regardless of amount or what the LLM decided. No /answer
-// companion endpoint is needed -- this is a single deterministic deny, not a
-// paused task waiting on a human choice.
+// agentgateway's identity-based mcp.authorization Deny policy (agentic-field-
+// kit's stage-policy-controller feature, 'customers' in jwt.Groups) blocks it
+// -- if currently applied (see the apply/remove/status endpoints above) --
+// regardless of amount or what the LLM decided. No /answer companion
+// endpoint is needed -- this is a single deterministic deny, not a paused
+// task waiting on a human choice.
 //
 // The chain's own artifacts never show it, though: confirmed live (both with
 // and without the Deny policy active) that extractToolCallSteps only ever
