@@ -23,9 +23,15 @@ interface ToolCallStep {
   error?: string
 }
 
+interface DirectCheck {
+  blocked: boolean
+  detail: string
+}
+
 interface DenyCheckResponse {
   replyText: string
   steps: ToolCallStep[]
+  directCheck: DirectCheck
 }
 
 /**
@@ -140,10 +146,33 @@ export function Stage5ToolPolicy({ onNext }: StageProps) {
                 ))}
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-sm">Final outcome</CardTitle>
+                    <CardTitle className="text-sm">Final outcome (from the agent chain)</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <p className="text-sm">{denyResponse.replyText}</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="flex items-start gap-3 py-4">
+                    {denyResponse.directCheck.blocked ? (
+                      <ShieldX className="text-destructive mt-0.5 size-4 shrink-0" />
+                    ) : (
+                      <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-green-600 dark:text-green-500" />
+                    )}
+                    <div className="flex flex-col gap-1">
+                      <p className="text-sm font-medium">
+                        {denyResponse.directCheck.blocked
+                          ? 'Gateway check: refund_payment blocked'
+                          : 'Gateway check: refund_payment allowed'}
+                      </p>
+                      <p className="text-muted-foreground text-xs">
+                        A direct refund_payment call (this BFF, same identity, same route) --
+                        agentgateway's own response, not the agent's interpretation of it.
+                      </p>
+                      <pre className="bg-muted overflow-x-auto rounded-lg p-2 text-xs whitespace-pre-wrap">
+                        {denyResponse.directCheck.detail}
+                      </pre>
+                    </div>
                   </CardContent>
                 </Card>
               </div>

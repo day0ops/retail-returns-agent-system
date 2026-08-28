@@ -49,6 +49,15 @@ const config = {
   // tool-schema comparison for order-db-mcp.
   orderDbMcpUrl: requiredEnv('ORDER_DB_MCP_URL'),
   orderDbCodemodeMcpUrl: requiredEnv('ORDER_DB_CODEMODE_MCP_URL'),
+  // Stage 4 (tool policy): payment-mcp's normal, AgentRegistry-managed route
+  // (Strict JWT + token exchange, same one refund-approval's own PAYMENT_URL
+  // uses) -- lets this BFF call refund_payment directly, as a structured,
+  // unambiguous companion to the full-chain narrative below. Needed because
+  // a deny several A2A hops deep never bubbles up into support-triage's own
+  // artifact list (extractToolCallSteps only sees support-triage's own
+  // immediate tool calls, confirmed live -- see the '/api/stage-tool-policy/
+  // ask' handler's comment).
+  paymentMcpUrl: requiredEnv('PAYMENT_MCP_URL'),
   // Stage 5 (PII masking): order-db-mcp's own k8s Service, bypassing
   // agentgateway (and therefore the pii-guardrail-policy feature's
   // CheckResponse hook) entirely -- a genuinely raw baseline for comparison
@@ -243,6 +252,17 @@ app.get('/api/stage-tool-policy/codemode-comparison', async (_req, res) => {
 // blocks it regardless of amount or what the LLM decided. No /answer
 // companion endpoint is needed -- this is a single deterministic deny, not a
 // paused task waiting on a human choice.
+//
+// The chain's own artifacts never show it, though: confirmed live (both with
+// and without the Deny policy active) that extractToolCallSteps only ever
+// surfaces support-triage's OWN immediate tool calls (list_orders, get_order,
+// order_lookup) -- fraud_check/refund_approval/refund_payment are each a
+// further A2A hop deep, made by a downstream agent's own task, and never
+// bubble back up into support-triage's artifact list. So alongside the
+// chain's narrative reply, this also makes payment-mcp's own refund_payment
+// call directly (same identity, same route real agents use) purely to
+// surface the gateway's actual structured response as unambiguous proof.
+const TOOL_POLICY_DEMO_ORDER = { orderId: 'ORD-1002', amount: 12.5 }
 const TOOL_POLICY_DEMO_MESSAGE =
   'Process a return for order ORD-1002: USB-C Charging Cable, purchased for $12.50 ' +
   'on 2026-07-15, delivered by FastShip (tracking FS100200), for customer CUST-100. ' +
@@ -259,7 +279,23 @@ app.post('/api/stage-tool-policy/ask', async (_req, res) => {
       TOOL_POLICY_DEMO_MESSAGE,
       currentCustomerToken,
     )
-    res.json({ replyText: result.replyText, steps: extractToolCallSteps(result.raw) })
+    let directCheck: { blocked: boolean; detail: string }
+    try {
+      const callResult = await callTool(
+        config.paymentMcpUrl,
+        'refund_payment',
+        { order_id: TOOL_POLICY_DEMO_ORDER.orderId, amount: TOOL_POLICY_DEMO_ORDER.amount },
+        currentCustomerToken,
+      )
+      directCheck = { blocked: false, detail: JSON.stringify(callResult) }
+    } catch (err) {
+      directCheck = { blocked: true, detail: err instanceof Error ? err.message : String(err) }
+    }
+    res.json({
+      replyText: result.replyText,
+      steps: extractToolCallSteps(result.raw),
+      directCheck,
+    })
   } catch (err) {
     res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
   }
