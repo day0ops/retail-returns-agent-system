@@ -4,8 +4,9 @@ import { Stage2TokenExchange } from '@/pages/Stage2TokenExchange'
 import { Stage3A2AHandoff } from '@/pages/Stage3A2AHandoff'
 import { Stage4Elicitation } from '@/pages/Stage4Elicitation'
 import { Stage5ToolPolicy } from '@/pages/Stage5ToolPolicy'
+import { Stage6Budget } from '@/pages/Stage6Budget'
 
-// A lightweight state-based stage switcher, not a router -- with only five
+// A lightweight state-based stage switcher, not a router -- with only six
 // stages built so far a full routing library would be premature. Revisit
 // once more stages land and deep-linking/back-button support starts to
 // matter. Page order here is the tour's presentation order, not the design
@@ -18,6 +19,7 @@ const STAGES = [
   Stage3A2AHandoff,
   Stage4Elicitation,
   Stage5ToolPolicy,
+  Stage6Budget,
 ] as const
 
 function App() {
