@@ -1,4 +1,4 @@
-module github.com/day0ops/retail-returns-agent-system/mcp-servers/pii-guardrail
+module github.com/day0ops/retail-returns-agent-system/pii-guardrail
 
 go 1.26.3
 
