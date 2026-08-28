@@ -9,19 +9,18 @@ import (
 	"log"
 	"os"
 
-	a2atype "github.com/a2aproject/a2a-go/a2a"
+	a2atype "github.com/a2aproject/a2a-go/v2/a2a"
 	"github.com/go-logr/logr"
 	"github.com/go-logr/zapr"
+	kagenta2a "github.com/kagent-dev/kagent/go/adk/pkg/a2a"
 	"github.com/kagent-dev/kagent/go/adk/pkg/app"
 	adkmcp "github.com/kagent-dev/kagent/go/adk/pkg/mcp"
 	"github.com/kagent-dev/kagent/go/adk/pkg/models"
 	adktools "github.com/kagent-dev/kagent/go/adk/pkg/tools"
 	"github.com/kagent-dev/kagent/go/api/adk"
 	"go.uber.org/zap"
-	adkagent "google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/agent/llmagent"
 	"google.golang.org/adk/v2/runner"
-	"google.golang.org/adk/v2/server/adka2a" //nolint:staticcheck // kagent still uses a2a-go v1; this ADK package is the compatibility adapter.
 	adksession "google.golang.org/adk/v2/session"
 	adktool "google.golang.org/adk/v2/tool"
 )
@@ -56,7 +55,7 @@ func main() {
 	// local dev.
 	toolsets := adkmcp.CreateToolsets(ctx, []adk.HttpMcpServerConfig{
 		{Params: adk.StreamableHTTPConnectionParams{Url: envOr("PAYMENT_URL", "http://localhost:8080/mcp")}},
-	}, nil /* no SSE servers */, true /* propagateToken: forward the customer JWT to MCP calls */, nil /* headerProvider */)
+	}, nil /* no SSE servers */, nil /* no stdio servers */, true /* propagateToken: forward the customer JWT to MCP calls */, nil /* headerProvider */)
 
 	// Elicitation (Stage 3 of the guided tour): for a high-value refund, pause
 	// and ask the customer a real question instead of deciding unilaterally.
@@ -93,19 +92,20 @@ func main() {
 		Agent:          refundApproval,
 		SessionService: adksession.InMemoryService(),
 	}
-	var runConfig adkagent.RunConfig
-	runConfig.StreamingMode = adkagent.StreamingModeSSE
-	executor := adka2a.NewExecutor(adka2a.ExecutorConfig{RunnerConfig: runnerConfig, RunConfig: runConfig})
+	executor := kagenta2a.NewKAgentExecutor(kagenta2a.KAgentExecutorConfig{
+		RunnerConfig: runnerConfig,
+		Stream:       true,
+		AppName:      "refund-approval",
+		Logger:       logger,
+	})
 
 	kagentApp, err := app.New(app.AppConfig{
 		AgentCard: a2atype.AgentCard{
 			Name:        "refund-approval",
 			Description: "Retail refund approval agent -- last hop in the returns copilot chain",
 			Version:     "0.1.0",
-			URL:         envOr("AGENT_CARD_URL", "http://localhost:8080"),
 			Capabilities: a2atype.AgentCapabilities{
-				Streaming:              true,
-				StateTransitionHistory: true,
+				Streaming: true,
 			},
 			DefaultInputModes:  []string{"text/plain"},
 			DefaultOutputModes: []string{"text/plain"},

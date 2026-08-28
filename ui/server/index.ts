@@ -44,11 +44,6 @@ const config = {
   // and are unaffected).
   llmBaseUrl: requiredEnv('LLM_BASE_URL'),
   supportTriageUrl: requiredEnv('SUPPORT_TRIAGE_URL'),
-  // Stage 3 (elicitation) calls refund-approval directly rather than through
-  // support-triage's full chain -- see the REFUND_APPROVAL_AGENT_URL comment
-  // in the app manifest for why (a kagent SDK bug in nested HITL resume
-  // forwarding).
-  refundApprovalUrl: requiredEnv('REFUND_APPROVAL_AGENT_URL'),
   // Stage 4 (progressive disclosure): before (plain, authenticated) vs.
   // after (codeMode, unauthenticated -- see the app manifest comment)
   // tool-schema comparison for order-db-mcp.
@@ -143,18 +138,17 @@ app.post('/api/stage3/ask', async (req, res) => {
   }
 })
 
-// Stage 3 (elicitation): calls refund-approval DIRECTLY, not through
-// support-triage's chain like Stage 7 does. A kagent SDK bug means nested A2A
-// HITL resume forwarding (remote_a2a_tool.go's handleResume) only works
-// correctly for the first hop an external client resumes -- every hop beyond
-// that silently fails and falls back to a generic "pending" placeholder
-// instead of the real outcome (see the "Known issues to revisit" section of
-// docs/superpowers/specs/2026-08-26-retail-returns-copilot-design.md in
-// agentic-field-kit). Calling refund-approval directly keeps this to exactly
-// one hop, so its ask_user pause resumes reliably. The tradeoff: this message
-// must carry the order/customer/amount details fraud-check would normally
-// have already verified and forwarded, since refund-approval isn't reached
-// through that chain here.
+// Stage 3 (elicitation): calls support-triage, the same real entry point
+// Stage 7's A2A handoff chain uses -- support-triage -> order_lookup ->
+// fraud_check -> refund_approval, with refund_approval's ask_user pause
+// bubbling all the way back up. This used to call refund-approval directly
+// (1 hop) instead, working around a kagent SDK bug where nested A2A HITL
+// resume forwarding only completed the first hop an external client resumed.
+// Fixed upstream (kagent's hitl/v1 A2A Extension redesign) and confirmed live
+// 2026-08-28: a single resume now completes the entire chain, so the
+// workaround is no longer needed -- see the "Known issues to revisit" section
+// of docs/superpowers/specs/2026-08-26-retail-returns-copilot-design.md in
+// agentic-field-kit for the full investigation.
 app.post('/api/stage-elicitation/ask', async (req, res) => {
   if (!currentCustomerToken) {
     res.status(401).json({ error: 'not logged in — call /api/stage2/login first' })
@@ -166,7 +160,7 @@ app.post('/api/stage-elicitation/ask', async (req, res) => {
     return
   }
   try {
-    const result = await sendMessage(config.refundApprovalUrl, message, currentCustomerToken)
+    const result = await sendMessage(config.supportTriageUrl, message, currentCustomerToken)
     const pending = extractPendingQuestion(result.raw)
     if (pending) {
       pendingElicitation = pending
@@ -200,7 +194,7 @@ app.post('/api/stage-elicitation/answer', async (req, res) => {
   }
   try {
     const outcome = await resumeWithAnswer(
-      config.refundApprovalUrl,
+      config.supportTriageUrl,
       pendingElicitation,
       [[answer]],
       currentCustomerToken,

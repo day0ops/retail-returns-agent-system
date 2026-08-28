@@ -1,14 +1,14 @@
-go 1.26.3
+go 1.27.0
 
 use (
-	./agents/support-triage
-	./agents/order-lookup
 	./agents/fraud-check
+	./agents/order-lookup
 	./agents/refund-approval
+	./agents/support-triage
+	./mcp-servers/fraud-scoring
+	./mcp-servers/inventory
 	./mcp-servers/order-db
 	./mcp-servers/payment
 	./mcp-servers/shipping
-	./mcp-servers/inventory
-	./mcp-servers/fraud-scoring
 	./pii-guardrail
 )

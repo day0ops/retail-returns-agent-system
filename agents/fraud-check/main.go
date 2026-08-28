@@ -8,19 +8,18 @@ import (
 	"log"
 	"os"
 
-	a2atype "github.com/a2aproject/a2a-go/a2a"
+	a2atype "github.com/a2aproject/a2a-go/v2/a2a"
 	"github.com/go-logr/logr"
 	"github.com/go-logr/zapr"
+	kagenta2a "github.com/kagent-dev/kagent/go/adk/pkg/a2a"
 	"github.com/kagent-dev/kagent/go/adk/pkg/app"
 	adkmcp "github.com/kagent-dev/kagent/go/adk/pkg/mcp"
 	"github.com/kagent-dev/kagent/go/adk/pkg/models"
 	adktools "github.com/kagent-dev/kagent/go/adk/pkg/tools"
 	"github.com/kagent-dev/kagent/go/api/adk"
 	"go.uber.org/zap"
-	adkagent "google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/agent/llmagent"
 	"google.golang.org/adk/v2/runner"
-	"google.golang.org/adk/v2/server/adka2a" //nolint:staticcheck // kagent still uses a2a-go v1; this ADK package is the compatibility adapter.
 	adksession "google.golang.org/adk/v2/session"
 	adktool "google.golang.org/adk/v2/tool"
 )
@@ -55,16 +54,16 @@ func main() {
 	// for local dev.
 	toolsets := adkmcp.CreateToolsets(ctx, []adk.HttpMcpServerConfig{
 		{Params: adk.StreamableHTTPConnectionParams{Url: envOr("FRAUD_SCORING_URL", "http://localhost:8080/mcp")}},
-	}, nil /* no SSE servers */, true /* propagateToken: forward the customer JWT to MCP calls */, nil /* headerProvider */)
+	}, nil /* no SSE servers */, nil /* no stdio servers */, true /* propagateToken: forward the customer JWT to MCP calls */, nil /* headerProvider */)
 
 	// Final hop of the A2A chain: hand off to refund_approval once risk is
 	// scored. propagateToken: true forwards the customer's JWT on this
 	// outbound A2A call the same way it's forwarded to the MCP call above.
-	refundApprovalTool, _, err := adktools.NewKAgentRemoteA2ATool(
+	refundApprovalTool, err := adktools.NewKAgentRemoteA2ATool(
 		"refund_approval",
 		"Delegates payment method lookup and refund processing to the refund-approval agent",
 		envOr("REFUND_APPROVAL_AGENT_URL", "http://localhost:8083"),
-		nil, nil, true,
+		nil, nil, true, false,
 	)
 	if err != nil {
 		log.Fatalf("Failed to create refund_approval A2A tool: %v", err)
@@ -90,19 +89,20 @@ func main() {
 		Agent:          fraudCheck,
 		SessionService: adksession.InMemoryService(),
 	}
-	var runConfig adkagent.RunConfig
-	runConfig.StreamingMode = adkagent.StreamingModeSSE
-	executor := adka2a.NewExecutor(adka2a.ExecutorConfig{RunnerConfig: runnerConfig, RunConfig: runConfig})
+	executor := kagenta2a.NewKAgentExecutor(kagenta2a.KAgentExecutorConfig{
+		RunnerConfig: runnerConfig,
+		Stream:       true,
+		AppName:      "fraud-check",
+		Logger:       logger,
+	})
 
 	kagentApp, err := app.New(app.AppConfig{
 		AgentCard: a2atype.AgentCard{
 			Name:        "fraud-check",
 			Description: "Retail fraud check agent -- scores an order's fraud risk",
 			Version:     "0.1.0",
-			URL:         envOr("AGENT_CARD_URL", "http://localhost:8080"),
 			Capabilities: a2atype.AgentCapabilities{
-				Streaming:              true,
-				StateTransitionHistory: true,
+				Streaming: true,
 			},
 			DefaultInputModes:  []string{"text/plain"},
 			DefaultOutputModes: []string{"text/plain"},
