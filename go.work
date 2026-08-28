@@ -11,4 +11,5 @@ use (
 	./mcp-servers/payment
 	./mcp-servers/shipping
 	./pii-guardrail
+	./stage-policy-controller
 )
