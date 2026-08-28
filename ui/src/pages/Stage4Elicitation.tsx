@@ -16,8 +16,7 @@ interface AskUserQuestion {
 interface PendingQuestion {
   taskId: string
   contextId: string
-  confirmationId: string
-  payload: Record<string, unknown>
+  resumeId: string
   questions: AskUserQuestion[]
 }
 
@@ -25,10 +24,9 @@ type AskOutcome =
   | { kind: 'input-required'; pending: PendingQuestion }
   | { kind: 'completed'; replyText: string; steps: unknown[] }
 
-// Full order details, not just "process my return" -- this talks to
-// refund-approval directly (see the BFF's /api/stage-elicitation/ask), which
-// no longer gets these pre-verified and forwarded by fraud-check the way it
-// does in the Stage 7 chain.
+// Full order details -- support-triage looks these up itself via order-db,
+// but supplying them keeps the demo deterministic rather than depending on
+// whatever get_order happens to return being echoed back verbatim.
 const ASK_PROMPT =
   'Process a return for order ORD-1001: Wireless Headphones, purchased for $89.99 ' +
   'on 2026-07-02, delivered by FastShip (tracking FS100100), for customer CUST-100. ' +
@@ -39,12 +37,13 @@ const ASK_PROMPT =
  * doc's capability numbering (elicitation): refund-approval pauses mid-task
  * and asks the customer a real question -- kagent's ask_user tool, not a
  * scripted client-side confirm() dialog. ORD-1001's $89.99 order crosses the
- * $75 threshold that triggers it. Unlike Stage 7, this page's BFF talks to
- * refund-approval directly rather than through the full support-triage chain
- * -- a kagent SDK bug means nested A2A HITL resume forwarding only works
- * reliably for the first hop an external client resumes (see
- * docs/superpowers/specs/2026-08-26-retail-returns-copilot-design.md's
- * "Known issues to revisit" in agentic-field-kit).
+ * $75 threshold that triggers it. This page's BFF talks to support-triage,
+ * the same real entry point Stage 7's A2A handoff chain uses -- the pause
+ * bubbles up from refund-approval through fraud_check and order_lookup, and a
+ * single resume from here completes the whole chain (kagent's hitl/v1 A2A
+ * Extension redesign; see docs/superpowers/specs/2026-08-26-retail-returns-copilot-design.md's
+ * "Known issues to revisit" in agentic-field-kit for the investigation that
+ * used to make this a 1-hop-only workaround).
  */
 export function Stage4Elicitation({ onNext }: StageProps) {
   const [outcome, setOutcome] = useState<AskOutcome | null>(null)
