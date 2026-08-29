@@ -29,7 +29,7 @@ export function TopologyNode({
     >
       <Card className={cn('w-56 gap-3 text-center', className)}>
         <CardHeader className="flex flex-col items-center gap-2">
-          <div className="bg-accent/10 text-accent flex size-10 items-center justify-center rounded-full">
+          <div className="bg-accent/10 text-accent-foreground flex size-10 items-center justify-center rounded-full">
             <Icon className="size-5" />
           </div>
           <CardTitle className="text-base">{title}</CardTitle>

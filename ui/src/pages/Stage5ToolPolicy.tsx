@@ -1,11 +1,22 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { ArrowRight, Code2, ShieldX, ShieldCheck, XCircle, CheckCircle2 } from 'lucide-react'
+import {
+  Code2,
+  ShieldX,
+  ShieldCheck,
+  XCircle,
+  CheckCircle2,
+  Info,
+  ChevronDown,
+  ChevronUp,
+} from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { StageFooterNav } from '@/components/stage-footer-nav'
+import { cn } from '@/lib/utils'
 import type { StageProps } from '@/pages/stage-props'
 
 interface McpTool {
@@ -37,8 +48,8 @@ interface DenyCheckResponse {
 }
 
 /**
- * Stage5ToolPolicy is the guided tour's fifth stop, "Stage 4" in the design
- * doc's capability numbering, with two independent sub-scenes:
+ * Stage5ToolPolicy is the guided tour's fifth stop, with two independent
+ * sub-scenes:
  *
  * 1. Tool policy (clickops): a presenter's "Apply policy" / "Remove policy"
  *    button controls whether agentgateway's identity-based mcp.authorization
@@ -49,7 +60,7 @@ interface DenyCheckResponse {
  *    amount check (call arguments are never populated at authorization-check
  *    time), so it's indiscriminate across every customer-identity
  *    refund_payment call in the whole demo -- pre-provisioning it
- *    unconditionally would silently change Stage 3's own outcome before a
+ *    unconditionally would silently change Stage 4's own outcome before a
  *    presenter ever reaches this stage. Once applied, a fixed low-value demo
  *    order (ORD-1002, $12.50) is routed through the full support-triage ->
  *    ... -> refund-approval chain (well under refund-approval's own $75
@@ -63,7 +74,7 @@ interface DenyCheckResponse {
  * 2. Progressive disclosure: order-db-mcp's tool catalog collapsed into one
  *    code-execution meta-tool via entMcp.codeMode.
  */
-export function Stage5ToolPolicy({ onNext }: StageProps) {
+export function Stage5ToolPolicy({ onNext, onBack }: StageProps) {
   const [comparison, setComparison] = useState<CodemodeComparison | null>(null)
   const [comparisonError, setComparisonError] = useState<string | null>(null)
   const [comparing, setComparing] = useState(false)
@@ -78,12 +89,38 @@ export function Stage5ToolPolicy({ onNext }: StageProps) {
   const [policyError, setPolicyError] = useState<string | null>(null)
   const [policyBusy, setPolicyBusy] = useState(false)
 
+  const [specExpanded, setSpecExpanded] = useState(false)
+  const [spec, setSpec] = useState<unknown>(null)
+  const [specError, setSpecError] = useState<string | null>(null)
+  const [specLoading, setSpecLoading] = useState(false)
+
   useEffect(() => {
     fetch('/api/stage-tool-policy/policy-status')
       .then((res) => res.json())
       .then((body) => setPolicyApplied(Boolean(body.applied)))
       .catch((err) => setPolicyError(err instanceof Error ? err.message : String(err)))
   }, [])
+
+  async function fetchSpec() {
+    setSpecLoading(true)
+    setSpecError(null)
+    try {
+      const res = await fetch('/api/stage-tool-policy/policy-spec')
+      const body = await res.json()
+      if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`)
+      setSpec(body.spec)
+    } catch (err) {
+      setSpecError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSpecLoading(false)
+    }
+  }
+
+  function toggleSpec() {
+    const next = !specExpanded
+    setSpecExpanded(next)
+    if (next) fetchSpec()
+  }
 
   async function handlePolicyToggle(action: 'apply-policy' | 'remove-policy') {
     setPolicyBusy(true)
@@ -93,6 +130,7 @@ export function Stage5ToolPolicy({ onNext }: StageProps) {
       const body = await res.json()
       if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`)
       setPolicyApplied(Boolean(body.applied))
+      if (specExpanded) fetchSpec()
     } catch (err) {
       setPolicyError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -134,7 +172,7 @@ export function Stage5ToolPolicy({ onNext }: StageProps) {
     <div className="mx-auto flex min-h-svh max-w-3xl flex-col gap-8 px-6 py-16">
       <div className="flex w-full items-start justify-between">
         <div>
-          <p className="text-accent text-sm font-medium">Stage 4</p>
+          <p className="text-accent-foreground text-sm font-medium">Stage 5</p>
           <h1 className="text-2xl font-semibold">Tool policy &amp; progressive disclosure</h1>
           <p className="text-muted-foreground mt-1 max-w-md text-sm">
             Two independent gateway-level controls: a hard identity-based deny on refund_payment
@@ -197,17 +235,48 @@ export function Stage5ToolPolicy({ onNext }: StageProps) {
                 </TooltipContent>
               </Tooltip>
               {policyApplied !== null && (
-                <Badge variant={policyApplied ? 'destructive' : 'secondary'} className="gap-1">
+                <Badge
+                  variant="secondary"
+                  className={cn(
+                    'gap-1',
+                    policyApplied &&
+                      'bg-green-600/10 text-green-600 dark:bg-green-500/20 dark:text-green-500',
+                  )}
+                >
                   {policyApplied ? (
-                    <ShieldX className="size-3" />
-                  ) : (
                     <ShieldCheck className="size-3" />
+                  ) : (
+                    <ShieldX className="size-3" />
                   )}
                   {policyApplied ? 'Policy applied' : 'Policy not applied'}
                 </Badge>
               )}
             </div>
             {policyError && <p className="text-destructive text-sm">{policyError}</p>}
+
+            <Button onClick={toggleSpec} variant="ghost" size="sm" className="w-fit">
+              {specExpanded ? (
+                <ChevronUp className="size-3.5" />
+              ) : (
+                <ChevronDown className="size-3.5" />
+              )}
+              {specExpanded ? 'Hide policy spec' : 'View policy spec'}
+            </Button>
+            {specExpanded && (
+              <div className="flex flex-col gap-1">
+                <p className="text-muted-foreground text-xs">
+                  spec: down for the real EnterpriseAgentgatewayPolicy object --{' '}
+                  {policyApplied ? 'currently live' : 'what applying would create (not live yet)'}.
+                </p>
+                {specLoading && <p className="text-muted-foreground text-xs">Loading…</p>}
+                {specError && <p className="text-destructive text-xs">{specError}</p>}
+                {spec != null && (
+                  <pre className="bg-muted overflow-x-auto rounded-lg p-3 text-xs whitespace-pre-wrap">
+                    {JSON.stringify(spec, null, 2)}
+                  </pre>
+                )}
+              </div>
+            )}
 
             <Button onClick={handleDenyCheck} disabled={checking} className="w-fit">
               {checking ? 'Processing…' : 'Attempt refund for ORD-1002'}
@@ -271,6 +340,17 @@ export function Stage5ToolPolicy({ onNext }: StageProps) {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Code2 className="size-4" /> Compare tool catalogs
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Info className="text-muted-foreground size-3.5" />
+                </TooltipTrigger>
+                <TooltipContent>
+                  entMcp.codeMode collapses order-db-mcp's individual tool schemas into a single
+                  code-execution meta-tool -- fewer tokens for the LLM to read as a real catalog
+                  grows to dozens of tools, at the cost of the model writing code instead of calling
+                  tools directly.
+                </TooltipContent>
+              </Tooltip>
             </CardTitle>
             <CardDescription>
               Live-queried from both routes, not hardcoded. At this demo's scale (2 tools) the
@@ -299,11 +379,7 @@ export function Stage5ToolPolicy({ onNext }: StageProps) {
         </Card>
       </motion.div>
 
-      {onNext && (
-        <Button onClick={onNext} variant="secondary" className="self-end">
-          Next <ArrowRight className="size-3.5" />
-        </Button>
-      )}
+      <StageFooterNav onBack={onBack} onNext={onNext} />
     </div>
   )
 }
@@ -344,7 +420,7 @@ function ToolList({ title, tools }: { title: string; tools: McpTool[] }) {
       <ul className="flex flex-col gap-1.5">
         {tools.map((tool) => (
           <li key={tool.name} className="bg-muted rounded-lg p-2 text-xs">
-            <span className="font-mono font-medium">{tool.name}</span>
+            <span className="text-accent-foreground font-mono font-medium">{tool.name}</span>
             {tool.description && <p className="text-muted-foreground mt-0.5">{tool.description}</p>}
           </li>
         ))}

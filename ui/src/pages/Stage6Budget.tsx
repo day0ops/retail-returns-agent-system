@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { ArrowRight, Coins, DollarSign, ShieldAlert, ShieldCheck } from 'lucide-react'
+import { Coins, DollarSign, ShieldAlert, ShieldCheck } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { StageFooterNav } from '@/components/stage-footer-nav'
+import { PolicySpecViewer } from '@/components/policy-spec-viewer'
 import type { StageProps } from '@/pages/stage-props'
 
 interface PaidCallResult {
@@ -25,8 +27,7 @@ interface CustomerState {
 const emptyState: CustomerState = { loggedIn: false, busy: false, error: null, calls: [] }
 
 /**
- * Stage6Budget is the guided tour's sixth stop, capability "Stage 6" in the
- * design doc's numbering: per-customer LLM spend budgets enforced at
+ * Stage6Budget is the guided tour's sixth stop: per-customer LLM spend budgets enforced at
  * agentgateway (EnterpriseAgentgatewayBudget + entBudgetEnforcement on the
  * shared openai backend), keyed on the customerEmail request dimension
  * (jwt.email) rather than jwt.sub -- see agentic-field-kit's budget-policy
@@ -50,7 +51,7 @@ const emptyState: CustomerState = { loggedIn: false, busy: false, error: null, c
  * stopping at the first block, so the aggregate "N/10 succeeded" stays
  * accurate and unambiguous regardless of any mid-batch jitter.
  */
-export function Stage6Budget({ onNext }: StageProps) {
+export function Stage6Budget({ onNext, onBack }: StageProps) {
   const [customer1, setCustomer1] = useState<CustomerState>(emptyState)
   const [customer2, setCustomer2] = useState<CustomerState>(emptyState)
 
@@ -92,7 +93,7 @@ export function Stage6Budget({ onNext }: StageProps) {
     <div className="mx-auto flex min-h-svh max-w-3xl flex-col gap-8 px-6 py-16">
       <div className="flex w-full items-start justify-between">
         <div>
-          <p className="text-accent text-sm font-medium">Stage 6</p>
+          <p className="text-accent-foreground text-sm font-medium">Stage 6</p>
           <h1 className="text-2xl font-semibold">Budget control</h1>
           <p className="text-muted-foreground mt-1 max-w-md text-sm">
             Two real customers, same mechanism (a per-customer LLM spend budget enforced at
@@ -101,6 +102,8 @@ export function Stage6Budget({ onNext }: StageProps) {
         </div>
         <ThemeToggle />
       </div>
+
+      <PolicySpecViewer endpoint="/api/stage-budget/policy-spec" toggleLabel="budget policy spec" />
 
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
         <BudgetCard
@@ -124,11 +127,7 @@ export function Stage6Budget({ onNext }: StageProps) {
         />
       </div>
 
-      {onNext && (
-        <Button onClick={onNext} variant="secondary" className="self-end">
-          Next <ArrowRight className="size-3.5" />
-        </Button>
-      )}
+      <StageFooterNav onBack={onBack} onNext={onNext} />
     </div>
   )
 }

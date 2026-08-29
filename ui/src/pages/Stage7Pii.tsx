@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { ArrowRight, Bot, Database, Eye, EyeOff, ShieldCheck } from 'lucide-react'
+import { Bot, Database, Eye, EyeOff, ShieldCheck } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { TopologyNode } from '@/components/topology-node'
+import { StageFooterNav } from '@/components/stage-footer-nav'
+import { PolicySpecViewer } from '@/components/policy-spec-viewer'
 import type { StageProps } from '@/pages/stage-props'
 
 interface OrderRecord {
@@ -28,8 +30,7 @@ interface PiiComparison {
 }
 
 /**
- * Stage7Pii is the guided tour's seventh stop, "Stage 5" in the design doc's
- * capability numbering: PII masking / guardrails.
+ * Stage7Pii is the guided tour's seventh stop: PII masking / guardrails.
  *
  * A real get_order call for the same order, once direct to order-db-mcp's own
  * Service (raw -- agentgateway never sees it) and once through the actual
@@ -38,7 +39,7 @@ interface PiiComparison {
  * side is real live agent traffic's own protection, not a side-channel demo
  * route -- see agentic-field-kit's features/agentic/pii-guardrail-policy.
  */
-export function Stage7Pii({ onNext }: StageProps) {
+export function Stage7Pii({ onNext, onBack }: StageProps) {
   const [comparison, setComparison] = useState<PiiComparison | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -59,10 +60,10 @@ export function Stage7Pii({ onNext }: StageProps) {
   }
 
   return (
-    <div className="mx-auto flex min-h-svh max-w-4xl flex-col gap-8 px-6 py-16">
+    <div className="mx-auto flex min-h-svh max-w-7xl flex-col gap-8 px-6 py-16">
       <div className="flex w-full items-start justify-between">
         <div>
-          <p className="text-accent text-sm font-medium">Stage 5</p>
+          <p className="text-accent-foreground text-sm font-medium">Stage 7</p>
           <h1 className="text-2xl font-semibold">PII masking / guardrails</h1>
           <p className="text-muted-foreground mt-1 max-w-md text-sm">
             order-db-mcp's real tool result, fetched two ways: direct to its Service (raw), and
@@ -107,10 +108,13 @@ export function Stage7Pii({ onNext }: StageProps) {
         />
       </div>
 
+      <PolicySpecViewer endpoint="/api/stage-pii/policy-spec" toggleLabel="guardrail policy spec" />
+
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 1.4 }}
+        className="max-w-3xl"
       >
         <Card>
           <CardHeader>
@@ -144,11 +148,7 @@ export function Stage7Pii({ onNext }: StageProps) {
         </Card>
       </motion.div>
 
-      {onNext && (
-        <Button onClick={onNext} variant="secondary" className="self-end">
-          Next <ArrowRight className="size-3.5" />
-        </Button>
-      )}
+      <StageFooterNav onBack={onBack} onNext={onNext} />
     </div>
   )
 }
@@ -160,7 +160,7 @@ function Arrow({ delay }: { delay: number }) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.3, delay }}
-      className="text-muted-foreground flex items-center justify-center px-1 text-lg sm:rotate-0"
+      className="text-accent-foreground flex items-center justify-center px-1 text-lg sm:rotate-0"
     >
       <span className="sm:hidden">↓</span>
       <span className="hidden sm:inline">→</span>

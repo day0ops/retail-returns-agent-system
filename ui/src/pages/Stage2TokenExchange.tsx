@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { ArrowRight, KeyRound, LogIn, MessageCircle } from 'lucide-react'
+import { ArrowRight, ChevronDown, ChevronUp, KeyRound, LogIn, MessageCircle } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { StageFooterNav } from '@/components/stage-footer-nav'
+import { SequenceDiagram, type SequenceStep } from '@/components/sequence-diagram'
 import type { StageProps } from '@/pages/stage-props'
 
 type Claims = Record<string, unknown>
@@ -21,7 +23,8 @@ const ASK_PROMPT =
  * diagnostic tool says it actually received, not just a description of the
  * mechanism.
  */
-export function Stage2TokenExchange({ onNext }: StageProps) {
+export function Stage2TokenExchange({ onNext, onBack }: StageProps) {
+  const [flowExpanded, setFlowExpanded] = useState(false)
   const [customerClaims, setCustomerClaims] = useState<Claims | null>(null)
   const [loginError, setLoginError] = useState<string | null>(null)
   const [loggingIn, setLoggingIn] = useState(false)
@@ -65,10 +68,10 @@ export function Stage2TokenExchange({ onNext }: StageProps) {
   }
 
   return (
-    <div className="mx-auto flex min-h-svh max-w-3xl flex-col gap-8 px-6 py-16">
+    <div className="mx-auto flex min-h-svh max-w-5xl flex-col gap-8 px-6 py-16">
       <div className="flex w-full items-start justify-between">
         <div>
-          <p className="text-accent text-sm font-medium">Stage 2</p>
+          <p className="text-accent-foreground text-sm font-medium">Stage 2</p>
           <h1 className="text-2xl font-semibold">Identity & token exchange</h1>
           <p className="text-muted-foreground mt-1 max-w-md text-sm">
             The customer's token is exchanged for a scoped downstream token before it ever reaches
@@ -77,6 +80,19 @@ export function Stage2TokenExchange({ onNext }: StageProps) {
           </p>
         </div>
         <ThemeToggle />
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <Button
+          onClick={() => setFlowExpanded(!flowExpanded)}
+          variant="ghost"
+          size="sm"
+          className="w-fit"
+        >
+          {flowExpanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+          {flowExpanded ? 'Hide request flow' : 'Show request flow'}
+        </Button>
+        {flowExpanded && <SequenceDiagram participants={SEQ_PARTICIPANTS} steps={SEQ_STEPS} />}
       </div>
 
       <motion.div
@@ -155,14 +171,22 @@ export function Stage2TokenExchange({ onNext }: StageProps) {
         </p>
       )}
 
-      {onNext && (
-        <Button onClick={onNext} variant="secondary" className="self-end">
-          Next: A2A handoff chain <ArrowRight className="size-3.5" />
-        </Button>
-      )}
+      <StageFooterNav onBack={onBack} onNext={onNext} nextLabel="Next: A2A handoff chain" />
     </div>
   )
 }
+
+const SEQ_PARTICIPANTS = ['Customer', 'support-triage', 'agentgateway', 'order-db']
+
+const SEQ_STEPS: SequenceStep[] = [
+  { from: 'Customer', to: 'support-triage', label: 'Request (Bearer <original token>)' },
+  { from: 'support-triage', to: 'agentgateway', label: 'Forwards the request as-is' },
+  { from: 'agentgateway', to: 'agentgateway', label: 'Exchanges the token (RFC 8693)', self: true },
+  { from: 'agentgateway', to: 'order-db', label: 'Forwards with the EXCHANGED token' },
+  { from: 'order-db', to: 'agentgateway', label: 'whoami response (real claims)' },
+  { from: 'agentgateway', to: 'support-triage', label: 'Response' },
+  { from: 'support-triage', to: 'Customer', label: 'Final reply' },
+]
 
 function ClaimsBlock({ label, claims }: { label: string; claims: Claims }) {
   return (

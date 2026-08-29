@@ -1,10 +1,21 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { ArrowRight, CheckCircle2, PackageSearch, ShieldAlert, Wallet, XCircle } from 'lucide-react'
+import {
+  ArrowRight,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  PackageSearch,
+  ShieldAlert,
+  Wallet,
+  XCircle,
+} from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { StageFooterNav } from '@/components/stage-footer-nav'
+import { SequenceDiagram, type SequenceStep } from '@/components/sequence-diagram'
 import type { StageProps } from '@/pages/stage-props'
 
 interface ToolCallStep {
@@ -38,6 +49,29 @@ const STEP_PRESENTATION: Record<string, { label: string; icon: typeof PackageSea
   refund_approval: { label: 'fraud-check → refund-approval (A2A)', icon: Wallet },
 }
 
+const SEQ_PARTICIPANTS = [
+  'Customer',
+  'support-triage',
+  'order-lookup',
+  'fraud-check',
+  'refund-approval',
+]
+
+// Delegates all the way down the chain, then each response bubbles back up
+// through the same hops -- the shape that makes this a real A2A handoff
+// chain rather than a flat fan-out of independent calls.
+const SEQ_STEPS: SequenceStep[] = [
+  { from: 'Customer', to: 'support-triage', label: 'Process a return (ORD-1006)' },
+  { from: 'support-triage', to: 'support-triage', label: 'get_order (MCP, not A2A)', self: true },
+  { from: 'support-triage', to: 'order-lookup', label: 'A2A: order_lookup' },
+  { from: 'order-lookup', to: 'fraud-check', label: 'A2A: fraud_check' },
+  { from: 'fraud-check', to: 'refund-approval', label: 'A2A: refund_approval' },
+  { from: 'refund-approval', to: 'fraud-check', label: 'Response' },
+  { from: 'fraud-check', to: 'order-lookup', label: 'Response' },
+  { from: 'order-lookup', to: 'support-triage', label: 'Response' },
+  { from: 'support-triage', to: 'Customer', label: 'Final reply' },
+]
+
 /**
  * Stage3A2AHandoff is the guided tour's third stop: a real multi-agent
  * handoff chain triggered by a single customer request. support-triage looks
@@ -47,7 +81,8 @@ const STEP_PRESENTATION: Record<string, { label: string; icon: typeof PackageSea
  * token (exchanged at every hop, same mechanism as Stage 2). Reuses Stage 2's
  * login session; this stage doesn't ask the customer to log in again.
  */
-export function Stage3A2AHandoff({ onNext }: StageProps) {
+export function Stage3A2AHandoff({ onNext, onBack }: StageProps) {
+  const [flowExpanded, setFlowExpanded] = useState(false)
   const [response, setResponse] = useState<AskResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [asking, setAsking] = useState(false)
@@ -75,7 +110,7 @@ export function Stage3A2AHandoff({ onNext }: StageProps) {
     <div className="mx-auto flex min-h-svh max-w-3xl flex-col gap-8 px-6 py-16">
       <div className="flex w-full items-start justify-between">
         <div>
-          <p className="text-accent text-sm font-medium">Stage 7</p>
+          <p className="text-accent-foreground text-sm font-medium">Stage 3</p>
           <h1 className="text-2xl font-semibold">A2A handoff chain</h1>
           <p className="text-muted-foreground mt-1 max-w-md text-sm">
             One customer request triggers a real chain of Agent2Agent calls -- support-triage hands
@@ -85,6 +120,19 @@ export function Stage3A2AHandoff({ onNext }: StageProps) {
           </p>
         </div>
         <ThemeToggle />
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <Button
+          onClick={() => setFlowExpanded(!flowExpanded)}
+          variant="ghost"
+          size="sm"
+          className="w-fit"
+        >
+          {flowExpanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+          {flowExpanded ? 'Hide handoff chain' : 'Show handoff chain'}
+        </Button>
+        {flowExpanded && <SequenceDiagram participants={SEQ_PARTICIPANTS} steps={SEQ_STEPS} />}
       </div>
 
       <motion.div
@@ -149,11 +197,7 @@ export function Stage3A2AHandoff({ onNext }: StageProps) {
         </p>
       )}
 
-      {onNext && (
-        <Button onClick={onNext} variant="secondary" className="self-end">
-          Next <ArrowRight className="size-3.5" />
-        </Button>
-      )}
+      <StageFooterNav onBack={onBack} onNext={onNext} />
     </div>
   )
 }

@@ -73,6 +73,27 @@ const config = {
   // against orderDbMcpUrl above, which real agent traffic already flows
   // through and which now has the guardrail attached.
   orderDbMcpDirectUrl: requiredEnv('ORDER_DB_MCP_DIRECT_URL'),
+  // Stage 8 (telemetry): agentgateway's access-log policy (agentic-field-kit's
+  // telemetry addon, already applied cluster-wide, not something this stage
+  // provisions) already fans every request's structured log line into Loki --
+  // this is a plain in-cluster HTTP call, not a new mechanism. Confirmed live
+  // reachable from this namespace with no NetworkPolicy/mesh authorization in
+  // the way.
+  lokiUrl: requiredEnv('LOKI_URL'),
+  // Stage 8 (telemetry): Tempo (agentic-field-kit's telemetry addon, same
+  // otel-tracing-policy that's already applied cluster-wide) holds the real
+  // assembled span tree per request -- confirmed live it has genuine
+  // parent-child hierarchy (e.g. a tools/call span with a Guardrail child
+  // span, each with their own inbound/outbound sub-spans), unlike Loki's
+  // access log lines which show each hop as an isolated event with no
+  // shared trace_id linking them.
+  tempoUrl: requiredEnv('TEMPO_URL'),
+  // Public HTTPS hostname for the "view full trace in Grafana" deep link --
+  // Grafana's own Loki datasource UID is always exactly 'loki' (fixed by
+  // kube-prometheus-stack's provisioning, not a random-generated UID; see
+  // agentic-field-kit's telemetry addon PLUGIN_TO_UID map), so the Explore
+  // URL is safely hardcoded rather than looked up.
+  grafanaUrl: requiredEnv('GRAFANA_URL'),
 }
 
 // Demo-scoped simplification: a single in-memory "current customer session",
@@ -287,6 +308,38 @@ app.get('/api/stage-tool-policy/policy-status', async (_req, res) => {
   }
 })
 
+// spec: down for the policy -- the live object's real spec if currently
+// applied, or the exact spec applying it would create otherwise, so a
+// presenter can show what the CRD actually contains before ever clicking
+// "Apply policy".
+app.get('/api/stage-tool-policy/policy-spec', async (_req, res) => {
+  try {
+    res.json(await callPolicyController('/stages/tool-policy/spec', 'GET'))
+  } catch (err) {
+    res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
+  }
+})
+
+// Stage 6/7 (budget, PII guardrail): read-only spec views over policies
+// that are pre-provisioned by usecase deploy, not clickops-toggled here --
+// same "spec: down" idea as Stage 4's viewer above, but no apply/remove
+// pair, and each view can span more than one live object.
+app.get('/api/stage-budget/policy-spec', async (_req, res) => {
+  try {
+    res.json(await callPolicyController('/policies/budget/spec', 'GET'))
+  } catch (err) {
+    res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
+  }
+})
+
+app.get('/api/stage-pii/policy-spec', async (_req, res) => {
+  try {
+    res.json(await callPolicyController('/policies/pii-guardrail/spec', 'GET'))
+  } catch (err) {
+    res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
+  }
+})
+
 // Stage 4 (tool policy): a fixed, low-value demo order (ORD-1002, $12.50, well
 // under refund-approval's own $75 ask_user threshold) routed through the full
 // support-triage -> order_lookup -> fraud_check -> refund_approval chain, so
@@ -487,6 +540,237 @@ app.post('/api/stage-budget/paid-call', async (req, res) => {
       Array.from({ length: batchSize }, () => makePaidCall(token, true)),
     )
     res.json({ customer, calls: results })
+  } catch (err) {
+    res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
+  }
+})
+
+// Stage 8 (telemetry): a real session recap queried from Loki, not a mocked
+// summary. Two separate queries because identity propagation genuinely
+// differs by protocol (confirmed live against this cluster's own logs, not
+// assumed): MCP-protocol log lines carry the customer's jwt_sub -- token
+// exchange preserves the original subject, so filtering by it correctly
+// scopes to just this customer's calls even after the Stage 2 exchange.
+// LLM-protocol log lines (support-triage's own agent-to-OpenAI calls) carry
+// no JWT at all -- that call uses the agent's own credential, not something
+// proxied on behalf of the customer -- so those can only be scoped by the
+// time window.
+//
+// protocol/jwt_sub/http_status/etc. are Loki structured metadata, not real
+// indexed labels (confirmed live: k8s_namespace_name is the only one of
+// these that's a genuine label per /loki/api/v1/labels) -- putting them
+// inside the {...} stream selector silently matches zero streams. They must
+// go after a pipe instead.
+const SESSION_WINDOW_MINUTES = 15
+const AGENTGATEWAY_NAMESPACE = 'agentgateway-proxy'
+
+interface LokiStream {
+  stream: Record<string, string>
+}
+
+async function queryLoki(logql: string, startNs: bigint, endNs: bigint): Promise<LokiStream[]> {
+  const url = new URL('/loki/api/v1/query_range', config.lokiUrl)
+  url.searchParams.set('query', logql)
+  url.searchParams.set('limit', '500')
+  url.searchParams.set('start', startNs.toString())
+  url.searchParams.set('end', endNs.toString())
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`Loki query failed: HTTP ${res.status} ${await res.text()}`)
+  const body = (await res.json()) as { data: { result: LokiStream[] } }
+  return body.data.result
+}
+
+// Most recent N distinct trace_ids per protocol -- bounds both the number
+// of Tempo lookups this endpoint fires and how many waterfalls the UI has
+// to render, since a busy stage (e.g. Stage 6's 10-call budget batch) can
+// easily produce more traces than are useful to show in a recap.
+const MAX_TRACES_PER_PROTOCOL = 5
+
+function recentDistinctTraceIds(streams: LokiStream[]): string[] {
+  const seen = new Set<string>()
+  const ordered = [...streams].sort((a, b) =>
+    (b.stream.request_start_time ?? '').localeCompare(a.stream.request_start_time ?? ''),
+  )
+  const ids: string[] = []
+  for (const s of ordered) {
+    const id = s.stream.trace_id
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+    ids.push(id)
+    if (ids.length >= MAX_TRACES_PER_PROTOCOL) break
+  }
+  return ids
+}
+
+interface TempoSpan {
+  spanId: string
+  parentSpanId?: string
+  name: string
+  startTimeUnixNano: string
+  endTimeUnixNano: string
+}
+
+interface WaterfallSpan {
+  spanId: string
+  name: string
+  depth: number
+  offsetUs: number
+  durationUs: number
+}
+
+interface TraceWaterfall {
+  traceId: string
+  protocol: 'mcp' | 'llm'
+  spans: WaterfallSpan[]
+}
+
+async function fetchTempoSpans(traceId: string): Promise<TempoSpan[] | null> {
+  const res = await fetch(`${config.tempoUrl}/api/traces/${traceId}`)
+  if (res.status === 404) return null
+  if (!res.ok) throw new Error(`Tempo query failed: HTTP ${res.status} ${await res.text()}`)
+  const body = (await res.json()) as {
+    batches?: Array<{ scopeSpans: Array<{ spans: TempoSpan[] }> }>
+  }
+  return (body.batches ?? []).flatMap((b) => b.scopeSpans.flatMap((ss) => ss.spans))
+}
+
+// Depth-first pre-order walk of the real parent/child span tree, each
+// span's offset/duration converted to microseconds relative to the
+// trace's own earliest span -- epoch nanoseconds don't fit a JS number
+// safely, so all BigInt math happens here and only small relative values
+// (that do fit) cross into the JSON response.
+function buildWaterfall(
+  traceId: string,
+  protocol: 'mcp' | 'llm',
+  spans: TempoSpan[],
+): TraceWaterfall {
+  const childrenOf = new Map<string, TempoSpan[]>()
+  const byId = new Map(spans.map((s) => [s.spanId, s]))
+  const roots: TempoSpan[] = []
+  for (const s of spans) {
+    if (s.parentSpanId && byId.has(s.parentSpanId)) {
+      if (!childrenOf.has(s.parentSpanId)) childrenOf.set(s.parentSpanId, [])
+      childrenOf.get(s.parentSpanId)!.push(s)
+    } else {
+      roots.push(s)
+    }
+  }
+  const byStart = (a: TempoSpan, b: TempoSpan) =>
+    BigInt(a.startTimeUnixNano) < BigInt(b.startTimeUnixNano) ? -1 : 1
+  roots.sort(byStart)
+  for (const children of childrenOf.values()) children.sort(byStart)
+
+  const traceStart = spans
+    .map((s) => BigInt(s.startTimeUnixNano))
+    .reduce((min, v) => (v < min ? v : min))
+
+  const ordered: WaterfallSpan[] = []
+  const visit = (s: TempoSpan, depth: number) => {
+    const start = BigInt(s.startTimeUnixNano)
+    const end = BigInt(s.endTimeUnixNano)
+    ordered.push({
+      spanId: s.spanId,
+      name: s.name,
+      depth,
+      offsetUs: Number((start - traceStart) / 1000n),
+      durationUs: Number((end - start) / 1000n),
+    })
+    for (const child of childrenOf.get(s.spanId) ?? []) visit(child, depth + 1)
+  }
+  for (const r of roots) visit(r, 0)
+
+  return { traceId, protocol, spans: ordered }
+}
+
+async function fetchWaterfalls(
+  traceIds: string[],
+  protocol: 'mcp' | 'llm',
+): Promise<TraceWaterfall[]> {
+  const results = await Promise.all(
+    traceIds.map(async (traceId) => {
+      const spans = await fetchTempoSpans(traceId)
+      return spans && spans.length > 0 ? buildWaterfall(traceId, protocol, spans) : null
+    }),
+  )
+  return results.filter((w): w is TraceWaterfall => w !== null)
+}
+
+// Grafana Explore's documented URL-state shape (schemaVersion 1, single pane)
+// -- the datasource uid is the fixed 'loki' one from config.grafanaUrl's doc
+// comment above, not looked up at request time.
+function buildGrafanaExploreUrl(logql: string, startMs: number, endMs: number): string {
+  const panes = {
+    session: {
+      datasource: 'loki',
+      queries: [{ refId: 'A', expr: logql, datasource: { type: 'loki', uid: 'loki' } }],
+      range: { from: String(startMs), to: String(endMs) },
+    },
+  }
+  const params = new URLSearchParams({
+    schemaVersion: '1',
+    orgId: '1',
+    panes: JSON.stringify(panes),
+  })
+  return `${config.grafanaUrl}/explore?${params.toString()}`
+}
+
+app.get('/api/stage8/session-summary', async (_req, res) => {
+  if (!currentCustomerToken) {
+    res.status(401).json({ error: 'not logged in — call /api/stage2/login first' })
+    return
+  }
+  try {
+    const claims = decodeJwtClaims(currentCustomerToken)
+    const sub = String(claims.sub ?? '')
+    const endMs = Date.now()
+    const startMs = endMs - SESSION_WINDOW_MINUTES * 60_000
+    const endNs = BigInt(endMs) * 1_000_000n
+    const startNs = BigInt(startMs) * 1_000_000n
+
+    const mcpQuery = `{k8s_namespace_name="${AGENTGATEWAY_NAMESPACE}"} | protocol="mcp" | jwt_sub="${sub}"`
+    const llmQuery = `{k8s_namespace_name="${AGENTGATEWAY_NAMESPACE}"} | protocol="llm"`
+
+    const [mcpStreams, llmStreams] = await Promise.all([
+      queryLoki(mcpQuery, startNs, endNs),
+      queryLoki(llmQuery, startNs, endNs),
+    ])
+
+    const mcpCalls = mcpStreams.map((s) => {
+      const status = s.stream.http_status ?? ''
+      return {
+        backend: s.stream.backend_name || s.stream.http_path || 'unknown',
+        status,
+        blocked: status !== '' && status !== '200' && status !== '202',
+      }
+    })
+    const backendsTouched = [...new Set(mcpCalls.map((c) => c.backend))].sort()
+    const llmTotalTokens = llmStreams.reduce(
+      (sum, s) => sum + Number(s.stream.llm_total_tokens ?? 0),
+      0,
+    )
+
+    const [mcpTraces, llmTraces] = await Promise.all([
+      fetchWaterfalls(recentDistinctTraceIds(mcpStreams), 'mcp'),
+      fetchWaterfalls(recentDistinctTraceIds(llmStreams), 'llm'),
+    ])
+    const traces = [...mcpTraces, ...llmTraces]
+
+    res.json({
+      windowMinutes: SESSION_WINDOW_MINUTES,
+      mcp: {
+        totalCalls: mcpCalls.length,
+        blockedCalls: mcpCalls.filter((c) => c.blocked).length,
+        backendsTouched,
+      },
+      llm: {
+        totalCalls: llmStreams.length,
+        totalTokens: llmTotalTokens,
+      },
+      traces,
+      tracesShown: traces.length,
+      tracesTotal: mcpStreams.length + llmStreams.length,
+      grafanaUrl: buildGrafanaExploreUrl(mcpQuery, startMs, endMs),
+    })
   } catch (err) {
     res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
   }
