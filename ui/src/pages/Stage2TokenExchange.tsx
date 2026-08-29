@@ -1,11 +1,21 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { ArrowRight, KeyRound, LogIn, MessageCircle } from 'lucide-react'
+import {
+  ArrowRight,
+  Bot,
+  Database,
+  KeyRound,
+  LogIn,
+  MessageCircle,
+  ShieldCheck,
+  User,
+} from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { StageFooterNav } from '@/components/stage-footer-nav'
+import { TopologyNode } from '@/components/topology-node'
 import type { StageProps } from '@/pages/stage-props'
 
 type Claims = Record<string, unknown>
@@ -66,7 +76,7 @@ export function Stage2TokenExchange({ onNext, onBack }: StageProps) {
   }
 
   return (
-    <div className="mx-auto flex min-h-svh max-w-3xl flex-col gap-8 px-6 py-16">
+    <div className="mx-auto flex min-h-svh max-w-5xl flex-col gap-8 px-6 py-16">
       <div className="flex w-full items-start justify-between">
         <div>
           <p className="text-accent-foreground text-sm font-medium">Stage 2</p>
@@ -78,6 +88,46 @@ export function Stage2TokenExchange({ onNext, onBack }: StageProps) {
           </p>
         </div>
         <ThemeToggle />
+      </div>
+
+      <div className="mx-auto flex flex-col items-center gap-6 sm:flex-row sm:items-stretch">
+        <TopologyNode
+          icon={User}
+          title="Customer"
+          subtitle="Logs in via Keycloak (ROPC)"
+          badge="Identity"
+          delay={0}
+        />
+
+        <FlowArrow delay={0.2} />
+
+        <TopologyNode
+          icon={Bot}
+          title="support-triage"
+          subtitle="Forwards the token as-is"
+          badge="Agent"
+          delay={0.4}
+        />
+
+        <FlowArrow delay={0.6} />
+
+        <TopologyNode
+          icon={ShieldCheck}
+          title="agentgateway"
+          subtitle="Exchanges the token here (RFC 8693)"
+          badge="Data plane"
+          delay={0.8}
+        />
+
+        <FlowArrow delay={1.0} />
+
+        <TopologyNode
+          icon={Database}
+          title="order-db"
+          subtitle="Sees only the exchanged token"
+          badge="MCP server"
+          delay={1.2}
+        />
       </div>
 
       <motion.div
@@ -158,6 +208,21 @@ export function Stage2TokenExchange({ onNext, onBack }: StageProps) {
 
       <StageFooterNav onBack={onBack} onNext={onNext} nextLabel="Next: A2A handoff chain" />
     </div>
+  )
+}
+
+function FlowArrow({ delay }: { delay: number }) {
+  return (
+    <motion.div
+      aria-hidden
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.3, delay }}
+      className="text-accent-foreground flex items-center justify-center px-1 text-lg sm:rotate-0"
+    >
+      <span className="sm:hidden">↓</span>
+      <span className="hidden sm:inline">→</span>
+    </motion.div>
   )
 }
 

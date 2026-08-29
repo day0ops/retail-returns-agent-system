@@ -1,8 +1,9 @@
 import { motion } from 'framer-motion'
-import { Bot, Database, Network, Server, ShieldCheck } from 'lucide-react'
+import { Bot, Database, Network, Server, ShieldCheck, Waves } from 'lucide-react'
 import { TopologyNode } from '@/components/topology-node'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { StageFooterNav } from '@/components/stage-footer-nav'
+import { Badge } from '@/components/ui/badge'
 import type { StageProps } from '@/pages/stage-props'
 
 /**
@@ -76,6 +77,10 @@ export function Stage1Topology({ onNext, onBack }: StageProps) {
             delay={1.4}
           />
         </div>
+
+        <Connector delay={1.6} />
+
+        <FoundationLayer delay={1.75} />
       </div>
 
       <StageFooterNav onBack={onBack} onNext={onNext} nextLabel="Next: Identity & token exchange" />
@@ -107,5 +112,30 @@ function Connector({ delay }: { delay: number }) {
       transition={{ duration: 0.3, delay }}
       className="bg-accent-foreground h-8 w-px origin-top"
     />
+  )
+}
+
+// A wide plate rather than a same-sized TopologyNode card -- Ambient is the
+// data-plane substrate everything above runs on, not a peer component you'd
+// call directly, so it reads as a foundation, not another node in the chain.
+function FoundationLayer({ delay }: { delay: number }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, delay, ease: 'easeOut' }}
+      className="border-border bg-card flex w-full max-w-3xl items-center gap-3 rounded-xl border px-5 py-4"
+    >
+      <div className="bg-accent/10 text-accent-foreground flex size-10 shrink-0 items-center justify-center rounded-full">
+        <Waves className="size-5" />
+      </div>
+      <div className="flex flex-1 flex-col">
+        <p className="font-semibold">Istio Ambient Mesh</p>
+        <p className="text-muted-foreground text-sm">
+          The L4/L7 data plane every hop above actually runs on (ztunnel + waypoint) -- no sidecars.
+        </p>
+      </div>
+      <Badge variant="secondary">Foundation</Badge>
+    </motion.div>
   )
 }
