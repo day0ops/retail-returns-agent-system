@@ -20,8 +20,9 @@ export function Stage1Topology({ onNext, onBack }: StageProps) {
         <div>
           <p className="text-accent-foreground text-sm font-medium">Stage 1</p>
           <h1 className="text-2xl font-semibold">Meet the stack</h1>
-          <p className="text-muted-foreground mt-1 max-w-md text-sm">
-            An AI agent handling a customer return, backed by a real agent-to-MCP integration.
+          <p className="text-muted-foreground mt-1 max-w-lg text-sm">
+            support-triage, an AI agent, resolves a customer return by calling real MCP tool servers
+            -- every piece below is live infrastructure, not a mock.
           </p>
         </div>
         <ThemeToggle />
@@ -83,7 +84,57 @@ export function Stage1Topology({ onNext, onBack }: StageProps) {
         <FoundationLayer delay={1.75} />
       </div>
 
+      <ComponentBreakdown />
+
       <StageFooterNav onBack={onBack} onNext={onNext} nextLabel="Next: Identity & token exchange" />
+    </div>
+  )
+}
+
+interface StackComponent {
+  name: string
+  badge: string
+  description: string
+}
+
+const STACK_COMPONENTS: StackComponent[] = [
+  {
+    name: 'agentregistry',
+    badge: 'Governance',
+    description: 'Catalogs every agent and MCP server.',
+  },
+  { name: 'kagent', badge: 'Runtime', description: 'Runs agents as real Kubernetes workloads.' },
+  { name: 'support-triage', badge: 'Agent', description: "Handles this stage's customer return." },
+  {
+    name: 'agentgateway',
+    badge: 'Data plane',
+    description: 'Routes and enforces every agent-to-MCP call.',
+  },
+  { name: 'order-db', badge: 'MCP server', description: 'Exposes order lookup tools.' },
+  {
+    name: 'Istio Ambient Mesh',
+    badge: 'Foundation',
+    description: 'The mesh everything above runs on.',
+  },
+]
+
+// A compact legend below the diagram -- the diagram itself already carries a
+// one-line subtitle per node, this spells out what each role (agent vs. MCP
+// server vs. control/data plane) actually means, in one place.
+function ComponentBreakdown() {
+  return (
+    <div className="grid w-full max-w-3xl grid-cols-1 gap-3 sm:grid-cols-2">
+      {STACK_COMPONENTS.map((c) => (
+        <div key={c.name} className="flex items-start gap-3">
+          <Badge variant="secondary" className="w-24 shrink-0 justify-center">
+            {c.badge}
+          </Badge>
+          <div className="flex flex-col">
+            <p className="font-mono text-sm font-medium">{c.name}</p>
+            <p className="text-muted-foreground text-xs">{c.description}</p>
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
