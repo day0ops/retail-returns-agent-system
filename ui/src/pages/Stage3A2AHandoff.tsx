@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { StageFooterNav } from '@/components/stage-footer-nav'
 import type { StageProps } from '@/pages/stage-props'
 
 interface ToolCallStep {
@@ -47,7 +48,7 @@ const STEP_PRESENTATION: Record<string, { label: string; icon: typeof PackageSea
  * token (exchanged at every hop, same mechanism as Stage 2). Reuses Stage 2's
  * login session; this stage doesn't ask the customer to log in again.
  */
-export function Stage3A2AHandoff({ onNext }: StageProps) {
+export function Stage3A2AHandoff({ onNext, onBack }: StageProps) {
   const [response, setResponse] = useState<AskResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [asking, setAsking] = useState(false)
@@ -149,11 +150,7 @@ export function Stage3A2AHandoff({ onNext }: StageProps) {
         </p>
       )}
 
-      {onNext && (
-        <Button onClick={onNext} variant="secondary" className="self-end">
-          Next <ArrowRight className="size-3.5" />
-        </Button>
-      )}
+      <StageFooterNav onBack={onBack} onNext={onNext} />
     </div>
   )
 }

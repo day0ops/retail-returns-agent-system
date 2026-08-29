@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { StageFooterNav } from '@/components/stage-footer-nav'
 import type { StageProps } from '@/pages/stage-props'
 
 type Claims = Record<string, unknown>
@@ -21,7 +22,7 @@ const ASK_PROMPT =
  * diagnostic tool says it actually received, not just a description of the
  * mechanism.
  */
-export function Stage2TokenExchange({ onNext }: StageProps) {
+export function Stage2TokenExchange({ onNext, onBack }: StageProps) {
   const [customerClaims, setCustomerClaims] = useState<Claims | null>(null)
   const [loginError, setLoginError] = useState<string | null>(null)
   const [loggingIn, setLoggingIn] = useState(false)
@@ -155,11 +156,7 @@ export function Stage2TokenExchange({ onNext }: StageProps) {
         </p>
       )}
 
-      {onNext && (
-        <Button onClick={onNext} variant="secondary" className="self-end">
-          Next: A2A handoff chain <ArrowRight className="size-3.5" />
-        </Button>
-      )}
+      <StageFooterNav onBack={onBack} onNext={onNext} nextLabel="Next: A2A handoff chain" />
     </div>
   )
 }

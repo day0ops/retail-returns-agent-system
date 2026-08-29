@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { StageFooterNav } from '@/components/stage-footer-nav'
 import type { StageProps } from '@/pages/stage-props'
 
 interface AskUserQuestion {
@@ -45,7 +46,7 @@ const ASK_PROMPT =
  * "Known issues to revisit" in agentic-field-kit for the investigation that
  * used to make this a 1-hop-only workaround).
  */
-export function Stage4Elicitation({ onNext }: StageProps) {
+export function Stage4Elicitation({ onNext, onBack }: StageProps) {
   const [outcome, setOutcome] = useState<AskOutcome | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -194,11 +195,7 @@ export function Stage4Elicitation({ onNext }: StageProps) {
         </p>
       )}
 
-      {onNext && (
-        <Button onClick={onNext} variant="secondary" className="self-end">
-          Next <ArrowRight className="size-3.5" />
-        </Button>
-      )}
+      <StageFooterNav onBack={onBack} onNext={onNext} />
     </div>
   )
 }

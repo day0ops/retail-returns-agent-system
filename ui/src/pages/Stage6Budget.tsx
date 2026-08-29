@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { ArrowRight, Coins, DollarSign, ShieldAlert, ShieldCheck } from 'lucide-react'
+import { Coins, DollarSign, ShieldAlert, ShieldCheck } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { StageFooterNav } from '@/components/stage-footer-nav'
 import type { StageProps } from '@/pages/stage-props'
 
 interface PaidCallResult {
@@ -49,7 +50,7 @@ const emptyState: CustomerState = { loggedIn: false, busy: false, error: null, c
  * stopping at the first block, so the aggregate "N/10 succeeded" stays
  * accurate and unambiguous regardless of any mid-batch jitter.
  */
-export function Stage6Budget({ onNext }: StageProps) {
+export function Stage6Budget({ onNext, onBack }: StageProps) {
   const [customer1, setCustomer1] = useState<CustomerState>(emptyState)
   const [customer2, setCustomer2] = useState<CustomerState>(emptyState)
 
@@ -123,11 +124,7 @@ export function Stage6Budget({ onNext }: StageProps) {
         />
       </div>
 
-      {onNext && (
-        <Button onClick={onNext} variant="secondary" className="self-end">
-          Next <ArrowRight className="size-3.5" />
-        </Button>
-      )}
+      <StageFooterNav onBack={onBack} onNext={onNext} />
     </div>
   )
 }

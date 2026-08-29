@@ -1,8 +1,8 @@
 import { motion } from 'framer-motion'
-import { ArrowRight, Bot, Database, Network, Server, ShieldCheck } from 'lucide-react'
+import { Bot, Database, Network, Server, ShieldCheck } from 'lucide-react'
 import { TopologyNode } from '@/components/topology-node'
 import { ThemeToggle } from '@/components/theme-toggle'
-import { Button } from '@/components/ui/button'
+import { StageFooterNav } from '@/components/stage-footer-nav'
 import type { StageProps } from '@/pages/stage-props'
 
 /**
@@ -12,7 +12,7 @@ import type { StageProps } from '@/pages/stage-props'
  * live data or event stream yet -- that lands in a later phase once the
  * telemetry stage exists.
  */
-export function Stage1Topology({ onNext }: StageProps) {
+export function Stage1Topology({ onNext, onBack }: StageProps) {
   return (
     <div className="mx-auto flex min-h-svh max-w-5xl flex-col items-center gap-12 px-6 py-16">
       <div className="flex w-full items-start justify-between">
@@ -78,11 +78,7 @@ export function Stage1Topology({ onNext }: StageProps) {
         </div>
       </div>
 
-      {onNext && (
-        <Button onClick={onNext} variant="secondary" className="self-end">
-          Next: Identity & token exchange <ArrowRight className="size-3.5" />
-        </Button>
-      )}
+      <StageFooterNav onBack={onBack} onNext={onNext} nextLabel="Next: Identity & token exchange" />
     </div>
   )
 }

@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { ArrowRight, Bot, Database, Eye, EyeOff, ShieldCheck } from 'lucide-react'
+import { Bot, Database, Eye, EyeOff, ShieldCheck } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { TopologyNode } from '@/components/topology-node'
+import { StageFooterNav } from '@/components/stage-footer-nav'
 import type { StageProps } from '@/pages/stage-props'
 
 interface OrderRecord {
@@ -37,7 +38,7 @@ interface PiiComparison {
  * side is real live agent traffic's own protection, not a side-channel demo
  * route -- see agentic-field-kit's features/agentic/pii-guardrail-policy.
  */
-export function Stage7Pii({ onNext }: StageProps) {
+export function Stage7Pii({ onNext, onBack }: StageProps) {
   const [comparison, setComparison] = useState<PiiComparison | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -143,11 +144,7 @@ export function Stage7Pii({ onNext }: StageProps) {
         </Card>
       </motion.div>
 
-      {onNext && (
-        <Button onClick={onNext} variant="secondary" className="self-end">
-          Next <ArrowRight className="size-3.5" />
-        </Button>
-      )}
+      <StageFooterNav onBack={onBack} onNext={onNext} />
     </div>
   )
 }
