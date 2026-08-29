@@ -32,12 +32,23 @@ function App() {
 
   return (
     <TooltipProvider>
+      <AppHeader />
       <TourProgress current={stageIndex} total={STAGES.length} />
       <Stage
         onNext={stageIndex < STAGES.length - 1 ? () => setStageIndex(stageIndex + 1) : undefined}
         onBack={stageIndex > 0 ? () => setStageIndex(stageIndex - 1) : undefined}
       />
     </TooltipProvider>
+  )
+}
+
+function AppHeader() {
+  return (
+    <div className="mx-auto w-full max-w-5xl px-6 pt-6">
+      <p className="text-muted-foreground text-xs font-semibold tracking-widest uppercase">
+        Retail Returns Agent System
+      </p>
+    </div>
   )
 }
 
