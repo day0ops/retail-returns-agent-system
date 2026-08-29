@@ -132,7 +132,7 @@ function FoundationLayer({ delay }: { delay: number }) {
       <div className="flex flex-1 flex-col">
         <p className="font-semibold">Istio Ambient Mesh</p>
         <p className="text-muted-foreground text-sm">
-          The L4/L7 data plane every hop above actually runs on (ztunnel + waypoint) -- no sidecars.
+          The L4/L7 data plane every hop above actually runs on (ztunnel + waypoint).
         </p>
       </div>
       <Badge variant="secondary">Foundation</Badge>
