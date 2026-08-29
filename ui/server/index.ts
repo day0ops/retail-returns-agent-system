@@ -441,11 +441,18 @@ async function makePaidCall(token: string, longResponse: boolean): Promise<PaidC
 
 // Sub-scene 1: demo-customer, budgeted Block on Tokens (200/day) -- a single
 // normal-length call only spends ~40 tokens (confirmed live), well under the
-// 200 cap, so one call alone never crosses it. Fires up to 6 SEQUENTIAL calls
-// (not concurrent -- ordering matters here, unlike sub-scene 2's audit-only
-// batch below) so the cap reliably gets crossed and blocks within one click;
-// stops early once a call is actually blocked, since there's nothing more to
-// demonstrate once that happens.
+// 200 cap, so one call alone never crosses it. Fires 10 SEQUENTIAL calls (not
+// concurrent -- ordering matters here, unlike sub-scene 2's audit-only batch
+// below), always running the full batch rather than stopping at the first
+// blocked call: live-tested that agentgateway's own enforcement isn't a
+// simple monotonic "blocked forever once crossed" the instant the raw token
+// sum passes 200 -- a rapid sequential burst can show an occasional success
+// mixed in among blocks (some kind of refill/timing behavior internal to
+// agentgateway's own budget enforcement, not something this BFF has
+// visibility into or controls). Firing a fixed, generously-sized batch and
+// reporting the aggregate "N/10 succeeded" is robust to that -- with cumulative
+// spend several times the 200 cap by the end, the vast majority of calls in
+// the batch are blocked regardless of any mid-batch jitter.
 //
 // Sub-scene 2: demo-customer-2, budgeted Audit on USD ($1/day) -- Audit never
 // blocks, so a single call can't demonstrate anything by itself. Fires a
@@ -467,12 +474,10 @@ app.post('/api/stage-budget/paid-call', async (req, res) => {
   }
   try {
     if (customer === 'customer1') {
-      const maxCalls = 6
+      const callCount = 10
       const results: PaidCallResult[] = []
-      for (let i = 0; i < maxCalls; i++) {
-        const result = await makePaidCall(token, false)
-        results.push(result)
-        if (!result.ok) break
+      for (let i = 0; i < callCount; i++) {
+        results.push(await makePaidCall(token, false))
       }
       res.json({ customer, calls: results })
       return
