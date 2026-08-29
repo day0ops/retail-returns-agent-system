@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion'
 import { Bot, Database, Network, Server, ShieldCheck, Waves } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { TopologyNode } from '@/components/topology-node'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { StageFooterNav } from '@/components/stage-footer-nav'
@@ -49,14 +50,28 @@ export function Stage1Topology({ onNext, onBack }: StageProps) {
 
         <Connector delay={0.45} />
 
-        <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-stretch">
-          <TopologyNode
-            icon={Bot}
-            title="support-triage"
-            subtitle="Looks up a customer's order"
-            badge="Agent"
-            delay={0.6}
-          />
+        <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-start">
+          <div className="flex flex-col items-center gap-3">
+            <TopologyNode
+              icon={Bot}
+              title="support-triage"
+              subtitle="Looks up a customer's order"
+              badge="Agent"
+              delay={0.6}
+            />
+            <div className="flex w-56 flex-col gap-2 pt-1">
+              <MutedNode icon={Bot} title="order-lookup" subtitle="Order + shipping detail" />
+              <MutedNode icon={Bot} title="fraud-check" subtitle="Transaction risk scoring" />
+              <MutedNode
+                icon={Bot}
+                title="refund-approval"
+                subtitle="Payment method + refund processing"
+              />
+            </div>
+            <p className="text-muted-foreground text-center text-[11px]">
+              Full A2A chain revealed in Stage 3
+            </p>
+          </div>
 
           <Arrow delay={0.8} />
 
@@ -70,13 +85,26 @@ export function Stage1Topology({ onNext, onBack }: StageProps) {
 
           <Arrow delay={1.2} />
 
-          <TopologyNode
-            icon={Database}
-            title="order-db"
-            subtitle="Serves order lookup tools"
-            badge="MCP server"
-            delay={1.4}
-          />
+          <div className="flex flex-col items-center gap-3">
+            <TopologyNode
+              icon={Database}
+              title="order-db"
+              subtitle="Serves order lookup tools"
+              badge="MCP server"
+              delay={1.4}
+            />
+            <div className="flex w-56 flex-col gap-2 pt-1">
+              <MutedNode
+                icon={Database}
+                title="payment-mcp"
+                subtitle="get_payment_method, refund_payment"
+              />
+              <MutedNode icon={Database} title="shipping-mcp" subtitle="get_shipment_status" />
+              <MutedNode icon={Database} title="inventory-mcp" subtitle="check_stock" />
+              <MutedNode icon={Database} title="fraud-scoring-mcp" subtitle="score_transaction" />
+            </div>
+            <p className="text-muted-foreground text-center text-[11px]">Used starting Stage 4</p>
+          </div>
         </div>
 
         <Connector delay={1.6} />
@@ -135,6 +163,30 @@ function ComponentBreakdown() {
           </div>
         </div>
       ))}
+    </div>
+  )
+}
+
+// A deliberately de-emphasized row (not a TopologyNode card) for components
+// that are real and deployed but outside Stage 1's own walking-skeleton
+// focus (support-triage <-> order-db) -- shown by name so the full roster
+// is visible, without competing for attention with the highlighted pair.
+function MutedNode({
+  icon: Icon,
+  title,
+  subtitle,
+}: {
+  icon: LucideIcon
+  title: string
+  subtitle: string
+}) {
+  return (
+    <div className="flex items-center gap-2 opacity-50">
+      <Icon className="text-muted-foreground size-4 shrink-0" />
+      <div className="flex flex-col text-left">
+        <p className="font-mono text-xs font-medium">{title}</p>
+        <p className="text-muted-foreground text-[11px]">{subtitle}</p>
+      </div>
     </div>
   )
 }
