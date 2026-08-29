@@ -19,7 +19,14 @@ interface AskResponse {
   steps: ToolCallStep[]
 }
 
-const ASK_PROMPT = 'I want to return order ORD-1001 for a refund. Please process the full return.'
+// ORD-1006 ($45.00), not ORD-1001 -- deliberately under refund-approval's own
+// $75 ask_user threshold. This stage's endpoint (/api/stage3/ask) has no
+// pause/resume handling, since elicitation is Stage 4's own dedicated demo;
+// ORD-1001 crosses that threshold and used to leave this stage showing a raw
+// "Remote agent 'order_lookup' requires approval for tool(s): ask_user" error
+// most of the time instead of a clean handoff trace (confirmed live: ORD-1001
+// paused on ~87% of runs). See Stage 4 for the elicitation pause itself.
+const ASK_PROMPT = 'I want to return order ORD-1006 for a refund. Please process the full return.'
 
 // Maps a tool call's name to how this stage presents it -- get_order is
 // support-triage's own MCP call (not an A2A hop), the rest are the
@@ -90,7 +97,7 @@ export function Stage3A2AHandoff({ onNext }: StageProps) {
             <CardTitle>Process a return</CardTitle>
             <CardDescription>
               Asks support-triage, as the logged-in customer from Stage 2, to handle a full return
-              for order ORD-1001.
+              for order ORD-1006.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">

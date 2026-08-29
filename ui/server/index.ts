@@ -368,9 +368,14 @@ app.get('/api/stage-pii/compare', async (_req, res) => {
 })
 
 // Stage 6 (budget control): headers worth surfacing to the UI from a real
-// budgeted LLM response, if agentgateway's rate-limit-service backend adds
-// them -- not yet confirmed live (checked once this feature is deployed),
-// so this is a permissive substring match rather than an exact allowlist.
+// budgeted LLM response. Confirmed live: a Block-mode budget that's actually
+// been exceeded attaches real, useful proof (x-ratelimit-limit/-remaining/
+// -reset matching the configured cap and Day window exactly); an Audit-mode
+// budget that's never been exceeded attaches nothing distinguishing at all,
+// even well past its own cap -- only the same generic default headers a
+// completely unbudgeted call would also carry. The UI only ever displays
+// these once a call is actually blocked, for exactly that reason (see
+// Stage6Budget.tsx's BudgetCard).
 const BUDGET_HEADER_PATTERN = /budget|ratelimit/i
 
 function extractBudgetHeaders(headers: Headers): Record<string, string> {
@@ -435,14 +440,22 @@ async function makePaidCall(token: string, longResponse: boolean): Promise<PaidC
 }
 
 // Sub-scene 1: demo-customer, budgeted Block on Tokens (200/day) -- a single
-// normal-length call already carries enough tokens to cross it, so one click
-// is enough to see it get blocked.
+// normal-length call only spends ~40 tokens (confirmed live), well under the
+// 200 cap, so one call alone never crosses it. Fires up to 6 SEQUENTIAL calls
+// (not concurrent -- ordering matters here, unlike sub-scene 2's audit-only
+// batch below) so the cap reliably gets crossed and blocks within one click;
+// stops early once a call is actually blocked, since there's nothing more to
+// demonstrate once that happens.
 //
 // Sub-scene 2: demo-customer-2, budgeted Audit on USD ($1/day) -- Audit never
 // blocks, so a single call can't demonstrate anything by itself. Fires a
 // batch of concurrent calls with a deliberately long response per call so the
 // batch's real spend approaches/crosses $1 in one click rather than requiring
-// dozens of individual manual clicks.
+// dozens of individual manual clicks. Confirmed live that Audit-mode budgets
+// never attach any distinguishing header to the response (even well past $1
+// of real spend, only the same generic, irrelevant default rate-limit headers
+// ever appear) -- there is no client-visible proof beyond the call outcomes
+// themselves, so the UI doesn't claim otherwise (see Stage6Budget.tsx).
 app.post('/api/stage-budget/paid-call', async (req, res) => {
   const customer = req.body?.customer === 'customer2' ? 'customer2' : 'customer1'
   const token = budgetCustomerTokens[customer]
@@ -454,8 +467,14 @@ app.post('/api/stage-budget/paid-call', async (req, res) => {
   }
   try {
     if (customer === 'customer1') {
-      const result = await makePaidCall(token, false)
-      res.json({ customer, calls: [result] })
+      const maxCalls = 6
+      const results: PaidCallResult[] = []
+      for (let i = 0; i < maxCalls; i++) {
+        const result = await makePaidCall(token, false)
+        results.push(result)
+        if (!result.ok) break
+      }
+      res.json({ customer, calls: results })
       return
     }
     const batchSize = 25

@@ -73,7 +73,11 @@ func main() {
 	supportTriage, err := llmagent.New(llmagent.Config{
 		Name:        "support_triage",
 		Description: "Triages a customer's return/refund request and looks up their order",
-		Instruction: "You are a retail support agent. Given a customer's return request, " +
+		Instruction: "If the customer's message directly names a specific tool to call (for " +
+			"example, \"call the whoami diagnostic tool\"), call exactly that tool immediately " +
+			"and report back exactly what it returned, verbatim -- this is a diagnostic request, " +
+			"not a return request, and does not need an order ID or customer ID. " +
+			"Otherwise: You are a retail support agent. Given a customer's return request, " +
 			"use the order-db tools to look up their order, then delegate to the " +
 			"order_lookup agent to verify shipment details and continue the return chain " +
 			"(order_lookup hands off to fraud_check, which hands off to refund_approval). " +

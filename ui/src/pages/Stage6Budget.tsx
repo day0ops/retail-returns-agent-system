@@ -33,11 +33,16 @@ const emptyState: CustomerState = { loggedIn: false, busy: false, error: null, c
  * feature and its plan doc for why.
  *
  * Two real demo customers, same mechanism, different onBudgetExceeded modes:
- * customer1 is capped on Tokens and set to Block (a single normal call is
- * enough to trip it); customer2 is capped on USD and set to Audit, which
- * never blocks -- a single call can't demonstrate anything, so its button
- * fires a batch of concurrent long-response calls to approach/cross the $
- * cap in one click instead of dozens of manual ones.
+ * customer1 is capped on Tokens and set to Block -- a single normal call only
+ * spends ~40 of its 200-token cap, so its button fires up to 6 sequential
+ * calls (stopping once one is actually blocked) rather than one; customer2
+ * is capped on USD and set to Audit, which never blocks -- a single call
+ * can't demonstrate anything, so its button fires a batch of concurrent
+ * long-response calls to approach/cross the $ cap in one click instead of
+ * dozens of manual ones. Confirmed live that Audit-mode budgets never attach
+ * any distinguishing response header even well past the cap, so this stage
+ * doesn't claim header-level proof for that card -- only the behavioral
+ * contrast (blocked vs. not) is real, verifiable proof here.
  */
 export function Stage6Budget({ onNext }: StageProps) {
   const [customer1, setCustomer1] = useState<CustomerState>(emptyState)
@@ -95,11 +100,11 @@ export function Stage6Budget({ onNext }: StageProps) {
         <BudgetCard
           icon={<Coins className="size-4" />}
           title="Customer 1 — Tokens, Block"
-          description="200 tokens/day. A single normal-length call already carries enough tokens to cross it."
+          description="200 tokens/day. A single call only spends ~40 tokens, so this fires up to 6 sequential calls to cross the cap in one click, stopping as soon as one gets blocked."
           state={customer1}
           onLogin={() => login('customer1')}
           onCall={() => makeCall('customer1')}
-          callLabel="Make a paid call"
+          callLabel="Make paid calls until blocked"
         />
         <BudgetCard
           icon={<DollarSign className="size-4" />}
@@ -109,6 +114,7 @@ export function Stage6Budget({ onNext }: StageProps) {
           onLogin={() => login('customer2')}
           onCall={() => makeCall('customer2')}
           callLabel="Make 25 paid calls"
+          auditNote="Every call succeeded despite generating far more spend than the $1 cap -- Audit mode logs the overage server-side instead of blocking traffic. Compare to Customer 1, whose calls actually stop once its Block-mode cap is hit."
         />
       </div>
 
@@ -129,6 +135,7 @@ function BudgetCard({
   onLogin,
   onCall,
   callLabel,
+  auditNote,
 }: {
   icon: React.ReactNode
   title: string
@@ -137,12 +144,21 @@ function BudgetCard({
   onLogin: () => void
   onCall: () => void
   callLabel: string
+  // Audit-mode budgets never block, so there's nothing to prove via a
+  // blocked-call's headers -- shown instead of that once calls exist, since
+  // agentgateway never attaches any distinguishing header for Audit mode
+  // (confirmed live, even well past the $ cap: only the same generic,
+  // irrelevant default rate-limit headers ever appear).
+  auditNote?: string
 }) {
   const blocked = state.calls.some((c) => !c.ok)
   const totalTokens = state.calls.reduce((sum, c) => sum + (c.usage?.total_tokens ?? 0), 0)
-  const budgetHeaders = state.calls.find(
-    (c) => Object.keys(c.budgetHeaders).length > 0,
-  )?.budgetHeaders
+  // Only meaningful once a call is actually blocked -- headers on a
+  // successful call are the same generic, irrelevant defaults regardless of
+  // which budget (if any) is even configured, confirmed live.
+  const budgetHeaders = blocked
+    ? state.calls.find((c) => !c.ok && Object.keys(c.budgetHeaders).length > 0)?.budgetHeaders
+    : undefined
 
   return (
     <motion.div
@@ -188,6 +204,9 @@ function BudgetCard({
                 <pre className="bg-muted overflow-x-auto rounded-lg p-2 text-xs whitespace-pre-wrap">
                   {JSON.stringify(budgetHeaders, null, 2)}
                 </pre>
+              )}
+              {!blocked && auditNote && (
+                <p className="text-muted-foreground text-xs">{auditNote}</p>
               )}
             </div>
           )}
