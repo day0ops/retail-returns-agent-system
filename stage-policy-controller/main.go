@@ -186,6 +186,35 @@ func (srv *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"applied": true})
 }
 
+// handleSpec returns spec: down for this stage's policy -- the actual live
+// object's spec if currently applied, or the exact spec applying it would
+// create otherwise (same discoverBackendName lookup handleApply itself
+// uses), so a presenter can show what the policy really contains before
+// ever clicking "Apply".
+func (srv *server) handleSpec(w http.ResponseWriter, r *http.Request) {
+	s, ok := srv.lookupStage(w, r)
+	if !ok {
+		return
+	}
+	ctx := r.Context()
+	live, err := srv.client.Resource(policyGVR).Namespace(s.policyNamespace).Get(ctx, s.policyName, metav1.GetOptions{})
+	if err == nil {
+		writeJSON(w, map[string]any{"applied": true, "spec": live.Object["spec"]})
+		return
+	}
+	if !apierrors.IsNotFound(err) {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	backendName, err := discoverBackendName(ctx, srv.client, s)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	policy := s.buildPolicy(backendName)
+	writeJSON(w, map[string]any{"applied": false, "spec": policy.Object["spec"]})
+}
+
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(v)
@@ -208,6 +237,7 @@ func main() {
 	mux.HandleFunc("POST /stages/{stage}/apply", srv.handleApply)
 	mux.HandleFunc("POST /stages/{stage}/remove", srv.handleRemove)
 	mux.HandleFunc("GET /stages/{stage}/status", srv.handleStatus)
+	mux.HandleFunc("GET /stages/{stage}/spec", srv.handleSpec)
 
 	port := os.Getenv("PORT")
 	if port == "" {

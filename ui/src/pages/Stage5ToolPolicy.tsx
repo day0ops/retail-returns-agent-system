@@ -1,6 +1,15 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Code2, ShieldX, ShieldCheck, XCircle, CheckCircle2, Info } from 'lucide-react'
+import {
+  Code2,
+  ShieldX,
+  ShieldCheck,
+  XCircle,
+  CheckCircle2,
+  Info,
+  ChevronDown,
+  ChevronUp,
+} from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -79,12 +88,38 @@ export function Stage5ToolPolicy({ onNext, onBack }: StageProps) {
   const [policyError, setPolicyError] = useState<string | null>(null)
   const [policyBusy, setPolicyBusy] = useState(false)
 
+  const [specExpanded, setSpecExpanded] = useState(false)
+  const [spec, setSpec] = useState<unknown>(null)
+  const [specError, setSpecError] = useState<string | null>(null)
+  const [specLoading, setSpecLoading] = useState(false)
+
   useEffect(() => {
     fetch('/api/stage-tool-policy/policy-status')
       .then((res) => res.json())
       .then((body) => setPolicyApplied(Boolean(body.applied)))
       .catch((err) => setPolicyError(err instanceof Error ? err.message : String(err)))
   }, [])
+
+  async function fetchSpec() {
+    setSpecLoading(true)
+    setSpecError(null)
+    try {
+      const res = await fetch('/api/stage-tool-policy/policy-spec')
+      const body = await res.json()
+      if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`)
+      setSpec(body.spec)
+    } catch (err) {
+      setSpecError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSpecLoading(false)
+    }
+  }
+
+  function toggleSpec() {
+    const next = !specExpanded
+    setSpecExpanded(next)
+    if (next) fetchSpec()
+  }
 
   async function handlePolicyToggle(action: 'apply-policy' | 'remove-policy') {
     setPolicyBusy(true)
@@ -94,6 +129,7 @@ export function Stage5ToolPolicy({ onNext, onBack }: StageProps) {
       const body = await res.json()
       if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`)
       setPolicyApplied(Boolean(body.applied))
+      if (specExpanded) fetchSpec()
     } catch (err) {
       setPolicyError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -209,6 +245,30 @@ export function Stage5ToolPolicy({ onNext, onBack }: StageProps) {
               )}
             </div>
             {policyError && <p className="text-destructive text-sm">{policyError}</p>}
+
+            <Button onClick={toggleSpec} variant="ghost" size="sm" className="w-fit">
+              {specExpanded ? (
+                <ChevronUp className="size-3.5" />
+              ) : (
+                <ChevronDown className="size-3.5" />
+              )}
+              {specExpanded ? 'Hide policy spec' : 'View policy spec'}
+            </Button>
+            {specExpanded && (
+              <div className="flex flex-col gap-1">
+                <p className="text-muted-foreground text-xs">
+                  spec: down for the real EnterpriseAgentgatewayPolicy object --{' '}
+                  {policyApplied ? 'currently live' : 'what applying would create (not live yet)'}.
+                </p>
+                {specLoading && <p className="text-muted-foreground text-xs">Loading…</p>}
+                {specError && <p className="text-destructive text-xs">{specError}</p>}
+                {spec != null && (
+                  <pre className="bg-muted overflow-x-auto rounded-lg p-3 text-xs whitespace-pre-wrap">
+                    {JSON.stringify(spec, null, 2)}
+                  </pre>
+                )}
+              </div>
+            )}
 
             <Button onClick={handleDenyCheck} disabled={checking} className="w-fit">
               {checking ? 'Processing…' : 'Attempt refund for ORD-1002'}

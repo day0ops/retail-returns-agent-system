@@ -287,6 +287,18 @@ app.get('/api/stage-tool-policy/policy-status', async (_req, res) => {
   }
 })
 
+// spec: down for the policy -- the live object's real spec if currently
+// applied, or the exact spec applying it would create otherwise, so a
+// presenter can show what the CRD actually contains before ever clicking
+// "Apply policy".
+app.get('/api/stage-tool-policy/policy-spec', async (_req, res) => {
+  try {
+    res.json(await callPolicyController('/stages/tool-policy/spec', 'GET'))
+  } catch (err) {
+    res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
+  }
+})
+
 // Stage 4 (tool policy): a fixed, low-value demo order (ORD-1002, $12.50, well
 // under refund-approval's own $75 ask_user threshold) routed through the full
 // support-triage -> order_lookup -> fraud_check -> refund_approval chain, so
