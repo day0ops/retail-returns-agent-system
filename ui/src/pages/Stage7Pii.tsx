@@ -30,7 +30,7 @@ interface PiiComparison {
 }
 
 /**
- * Stage7Pii is the guided tour's seventh and final stop: PII masking / guardrails.
+ * Stage7Pii is the guided tour's seventh stop: PII masking / guardrails.
  *
  * A real get_order call for the same order, once direct to order-db-mcp's own
  * Service (raw -- agentgateway never sees it) and once through the actual

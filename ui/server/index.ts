@@ -73,6 +73,19 @@ const config = {
   // against orderDbMcpUrl above, which real agent traffic already flows
   // through and which now has the guardrail attached.
   orderDbMcpDirectUrl: requiredEnv('ORDER_DB_MCP_DIRECT_URL'),
+  // Stage 8 (telemetry): agentgateway's access-log policy (agentic-field-kit's
+  // telemetry addon, already applied cluster-wide, not something this stage
+  // provisions) already fans every request's structured log line into Loki --
+  // this is a plain in-cluster HTTP call, not a new mechanism. Confirmed live
+  // reachable from this namespace with no NetworkPolicy/mesh authorization in
+  // the way.
+  lokiUrl: requiredEnv('LOKI_URL'),
+  // Public HTTPS hostname for the "view full trace in Grafana" deep link --
+  // Grafana's own Loki datasource UID is always exactly 'loki' (fixed by
+  // kube-prometheus-stack's provisioning, not a random-generated UID; see
+  // agentic-field-kit's telemetry addon PLUGIN_TO_UID map), so the Explore
+  // URL is safely hardcoded rather than looked up.
+  grafanaUrl: requiredEnv('GRAFANA_URL'),
 }
 
 // Demo-scoped simplification: a single in-memory "current customer session",
@@ -519,6 +532,107 @@ app.post('/api/stage-budget/paid-call', async (req, res) => {
       Array.from({ length: batchSize }, () => makePaidCall(token, true)),
     )
     res.json({ customer, calls: results })
+  } catch (err) {
+    res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
+  }
+})
+
+// Stage 8 (telemetry): a real session recap queried from Loki, not a mocked
+// summary. Two separate queries because identity propagation genuinely
+// differs by protocol (confirmed live against this cluster's own logs, not
+// assumed): MCP-protocol log lines carry the customer's jwt_sub -- token
+// exchange preserves the original subject, so filtering by it correctly
+// scopes to just this customer's calls even after the Stage 2 exchange.
+// LLM-protocol log lines (support-triage's own agent-to-OpenAI calls) carry
+// no JWT at all -- that call uses the agent's own credential, not something
+// proxied on behalf of the customer -- so those can only be scoped by the
+// time window.
+const SESSION_WINDOW_MINUTES = 15
+const AGENTGATEWAY_NAMESPACE = 'agentgateway-proxy'
+
+interface LokiStream {
+  stream: Record<string, string>
+}
+
+async function queryLoki(logql: string, startNs: bigint, endNs: bigint): Promise<LokiStream[]> {
+  const url = new URL('/loki/api/v1/query_range', config.lokiUrl)
+  url.searchParams.set('query', logql)
+  url.searchParams.set('limit', '500')
+  url.searchParams.set('start', startNs.toString())
+  url.searchParams.set('end', endNs.toString())
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`Loki query failed: HTTP ${res.status} ${await res.text()}`)
+  const body = (await res.json()) as { data: { result: LokiStream[] } }
+  return body.data.result
+}
+
+// Grafana Explore's documented URL-state shape (schemaVersion 1, single pane)
+// -- the datasource uid is the fixed 'loki' one from config.grafanaUrl's doc
+// comment above, not looked up at request time.
+function buildGrafanaExploreUrl(logql: string, startMs: number, endMs: number): string {
+  const panes = {
+    session: {
+      datasource: 'loki',
+      queries: [{ refId: 'A', expr: logql, datasource: { type: 'loki', uid: 'loki' } }],
+      range: { from: String(startMs), to: String(endMs) },
+    },
+  }
+  const params = new URLSearchParams({
+    schemaVersion: '1',
+    orgId: '1',
+    panes: JSON.stringify(panes),
+  })
+  return `${config.grafanaUrl}/explore?${params.toString()}`
+}
+
+app.get('/api/stage8/session-summary', async (_req, res) => {
+  if (!currentCustomerToken) {
+    res.status(401).json({ error: 'not logged in — call /api/stage2/login first' })
+    return
+  }
+  try {
+    const claims = decodeJwtClaims(currentCustomerToken)
+    const sub = String(claims.sub ?? '')
+    const endMs = Date.now()
+    const startMs = endMs - SESSION_WINDOW_MINUTES * 60_000
+    const endNs = BigInt(endMs) * 1_000_000n
+    const startNs = BigInt(startMs) * 1_000_000n
+
+    const mcpQuery = `{k8s_namespace_name="${AGENTGATEWAY_NAMESPACE}", protocol="mcp", jwt_sub="${sub}"}`
+    const llmQuery = `{k8s_namespace_name="${AGENTGATEWAY_NAMESPACE}", protocol="llm"}`
+
+    const [mcpStreams, llmStreams] = await Promise.all([
+      queryLoki(mcpQuery, startNs, endNs),
+      queryLoki(llmQuery, startNs, endNs),
+    ])
+
+    const mcpCalls = mcpStreams.map((s) => {
+      const status = s.stream.http_status ?? ''
+      return {
+        backend: s.stream.backend_name || s.stream.http_path || 'unknown',
+        status,
+        blocked: status !== '' && status !== '200' && status !== '202',
+      }
+    })
+    const backendsTouched = [...new Set(mcpCalls.map((c) => c.backend))].sort()
+    const llmTotalTokens = llmStreams.reduce(
+      (sum, s) => sum + Number(s.stream.llm_total_tokens ?? 0),
+      0,
+    )
+
+    res.json({
+      windowMinutes: SESSION_WINDOW_MINUTES,
+      mcp: {
+        totalCalls: mcpCalls.length,
+        blockedCalls: mcpCalls.filter((c) => c.blocked).length,
+        backendsTouched,
+      },
+      llm: {
+        totalCalls: llmStreams.length,
+        totalTokens: llmTotalTokens,
+      },
+      grafanaUrl: buildGrafanaExploreUrl(mcpQuery, startMs, endMs),
+    })
   } catch (err) {
     res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
   }
