@@ -5,12 +5,16 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { StageFooterNav } from '@/components/stage-footer-nav'
+import { SessionTimeline, type TimelineCall } from '@/components/session-timeline'
 import type { StageProps } from '@/pages/stage-props'
 
 interface SessionSummary {
   windowMinutes: number
+  windowStartMs: number
+  windowEndMs: number
   mcp: { totalCalls: number; blockedCalls: number; backendsTouched: string[] }
   llm: { totalCalls: number; totalTokens: number }
+  timeline: TimelineCall[]
   grafanaUrl: string
 }
 
@@ -97,6 +101,20 @@ export function Stage8Telemetry({ onBack }: StageProps) {
                 />
               </div>
             )}
+            {summary && summary.timeline.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <div className="text-muted-foreground flex items-center gap-4 text-xs">
+                  <Legend color="bg-accent-foreground" label="MCP call" />
+                  <Legend color="bg-destructive" label="blocked" />
+                  <Legend color="bg-muted-foreground" label="LLM call" />
+                </div>
+                <SessionTimeline
+                  calls={summary.timeline}
+                  windowStartMs={summary.windowStartMs}
+                  windowEndMs={summary.windowEndMs}
+                />
+              </div>
+            )}
             {summary && (
               <Button asChild variant="outline" className="w-fit">
                 <a href={summary.grafanaUrl} target="_blank" rel="noreferrer">
@@ -110,6 +128,15 @@ export function Stage8Telemetry({ onBack }: StageProps) {
 
       <StageFooterNav onBack={onBack} />
     </div>
+  )
+}
+
+function Legend({ color, label }: { color: string; label: string }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <span className={`size-2 rounded-full ${color}`} />
+      {label}
+    </span>
   )
 }
 

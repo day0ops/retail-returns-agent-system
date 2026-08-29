@@ -572,6 +572,32 @@ async function queryLoki(logql: string, startNs: bigint, endNs: bigint): Promise
   return body.data.result
 }
 
+interface RecapCall {
+  type: 'mcp' | 'llm'
+  timestampMs: number
+  durationMs: number
+  label: string
+  status: string
+  blocked: boolean
+}
+
+// Both protocols log request_start_time (ISO 8601) and duration (e.g.
+// "1781ms") as structured metadata, not a Loki-native timestamp field on
+// the stream itself -- confirmed live, same fields already used for the
+// aggregate mcp/llm stats above, just not discarded this time.
+function streamToTimelineCall(s: LokiStream, type: RecapCall['type']): RecapCall | null {
+  const timestampMs = Date.parse(s.stream.request_start_time ?? '')
+  if (Number.isNaN(timestampMs)) return null
+  const durationMs = Number.parseInt(s.stream.duration ?? '0', 10) || 0
+  const status = s.stream.http_status ?? ''
+  const blocked = status !== '' && status !== '200' && status !== '202'
+  const label =
+    type === 'mcp'
+      ? s.stream.backend_name || s.stream.http_path || 'unknown'
+      : s.stream.llm_request_model || 'openai'
+  return { type, timestampMs, durationMs, label, status, blocked }
+}
+
 // Grafana Explore's documented URL-state shape (schemaVersion 1, single pane)
 // -- the datasource uid is the fixed 'loki' one from config.grafanaUrl's doc
 // comment above, not looked up at request time.
@@ -626,8 +652,17 @@ app.get('/api/stage8/session-summary', async (_req, res) => {
       0,
     )
 
+    const timeline = [
+      ...mcpStreams.map((s) => streamToTimelineCall(s, 'mcp')),
+      ...llmStreams.map((s) => streamToTimelineCall(s, 'llm')),
+    ]
+      .filter((c): c is RecapCall => c !== null)
+      .sort((a, b) => a.timestampMs - b.timestampMs)
+
     res.json({
       windowMinutes: SESSION_WINDOW_MINUTES,
+      windowStartMs: startMs,
+      windowEndMs: endMs,
       mcp: {
         totalCalls: mcpCalls.length,
         blockedCalls: mcpCalls.filter((c) => c.blocked).length,
@@ -637,6 +672,7 @@ app.get('/api/stage8/session-summary', async (_req, res) => {
         totalCalls: llmStreams.length,
         totalTokens: llmTotalTokens,
       },
+      timeline,
       grafanaUrl: buildGrafanaExploreUrl(mcpQuery, startMs, endMs),
     })
   } catch (err) {
