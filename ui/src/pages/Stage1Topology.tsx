@@ -22,8 +22,8 @@ export function Stage1Topology({ onNext, onBack }: StageProps) {
           <p className="text-accent-foreground text-sm font-medium">Stage 1</p>
           <h1 className="text-2xl font-semibold">Meet the stack</h1>
           <p className="text-muted-foreground mt-1 max-w-lg text-sm">
-            support-triage, an AI agent, resolves a customer return by calling real MCP tool servers
-            -- every piece below is live infrastructure, not a mock.
+            support-triage, an AI agent, resolves a customer return by calling real MCP tool
+            servers.
           </p>
         </div>
         <ThemeToggle />
