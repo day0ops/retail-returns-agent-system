@@ -547,6 +547,12 @@ app.post('/api/stage-budget/paid-call', async (req, res) => {
 // no JWT at all -- that call uses the agent's own credential, not something
 // proxied on behalf of the customer -- so those can only be scoped by the
 // time window.
+//
+// protocol/jwt_sub/http_status/etc. are Loki structured metadata, not real
+// indexed labels (confirmed live: k8s_namespace_name is the only one of
+// these that's a genuine label per /loki/api/v1/labels) -- putting them
+// inside the {...} stream selector silently matches zero streams. They must
+// go after a pipe instead.
 const SESSION_WINDOW_MINUTES = 15
 const AGENTGATEWAY_NAMESPACE = 'agentgateway-proxy'
 
@@ -598,8 +604,8 @@ app.get('/api/stage8/session-summary', async (_req, res) => {
     const endNs = BigInt(endMs) * 1_000_000n
     const startNs = BigInt(startMs) * 1_000_000n
 
-    const mcpQuery = `{k8s_namespace_name="${AGENTGATEWAY_NAMESPACE}", protocol="mcp", jwt_sub="${sub}"}`
-    const llmQuery = `{k8s_namespace_name="${AGENTGATEWAY_NAMESPACE}", protocol="llm"}`
+    const mcpQuery = `{k8s_namespace_name="${AGENTGATEWAY_NAMESPACE}"} | protocol="mcp" | jwt_sub="${sub}"`
+    const llmQuery = `{k8s_namespace_name="${AGENTGATEWAY_NAMESPACE}"} | protocol="llm"`
 
     const [mcpStreams, llmStreams] = await Promise.all([
       queryLoki(mcpQuery, startNs, endNs),
