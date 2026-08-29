@@ -39,7 +39,35 @@ var (
 	backendGVR = schema.GroupVersionResource{
 		Group: "enterpriseagentgateway.solo.io", Version: "v1alpha1", Resource: "enterpriseagentgatewaybackends",
 	}
+	budgetGVR = schema.GroupVersionResource{
+		Group: "enterpriseagentgateway.solo.io", Version: "v1alpha1", Resource: "enterpriseagentgatewaybudgets",
+	}
 )
+
+// viewRef points at one already-provisioned object a policy view shows --
+// read-only, never created/mutated by this service (see agentic-field-kit's
+// readOnlyRefs, which is what grants the RBAC these Gets rely on).
+type viewRef struct {
+	gvr       schema.GroupVersionResource
+	kind      string
+	name      string
+	namespace string
+}
+
+// policyViews are read-only spec views over policy objects this service
+// doesn't manage (they're pre-provisioned by agentic-field-kit's usecase
+// deploy, not clickops-toggled) -- unlike `stages`, there's no apply/remove
+// here, just "show what's live". A view can span more than one object (e.g.
+// budget's cap + its separate enforcement policy).
+var policyViews = map[string][]viewRef{
+	"budget": {
+		{gvr: budgetGVR, kind: "EnterpriseAgentgatewayBudget", name: "retail-returns-customer-budgets", namespace: "agentgateway-proxy"},
+		{gvr: policyGVR, kind: "EnterpriseAgentgatewayPolicy", name: "retail-returns-budget-enforcement", namespace: "agentgateway-proxy"},
+	},
+	"pii-guardrail": {
+		{gvr: policyGVR, kind: "EnterpriseAgentgatewayPolicy", name: "retail-returns-pii-guardrail", namespace: "agentregistry-system"},
+	},
+}
 
 // One entry per clickops-controlled stage. Only "tool-policy" exists today
 // (Stage 4's pilot) -- adding a stage means adding an entry here, not a new
@@ -215,6 +243,40 @@ func (srv *server) handleSpec(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"applied": false, "spec": policy.Object["spec"]})
 }
 
+// handlePolicyView returns spec: down for every object in a named policy
+// view -- these objects are pre-provisioned (not clickops-managed), so
+// unlike handleSpec there's no "what would applying create" fallback: if an
+// object isn't found, that's reported per-object rather than failing the
+// whole request.
+func (srv *server) handlePolicyView(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	refs, ok := policyViews[name]
+	if !ok {
+		http.Error(w, "unknown policy view: "+name, http.StatusNotFound)
+		return
+	}
+	ctx := r.Context()
+	objects := make([]map[string]any, 0, len(refs))
+	for _, ref := range refs {
+		obj, err := srv.client.Resource(ref.gvr).Namespace(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				objects = append(objects, map[string]any{
+					"kind": ref.kind, "name": ref.name, "namespace": ref.namespace, "found": false,
+				})
+				continue
+			}
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		objects = append(objects, map[string]any{
+			"kind": ref.kind, "name": ref.name, "namespace": ref.namespace,
+			"found": true, "spec": obj.Object["spec"],
+		})
+	}
+	writeJSON(w, map[string]any{"objects": objects})
+}
+
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(v)
@@ -238,6 +300,7 @@ func main() {
 	mux.HandleFunc("POST /stages/{stage}/remove", srv.handleRemove)
 	mux.HandleFunc("GET /stages/{stage}/status", srv.handleStatus)
 	mux.HandleFunc("GET /stages/{stage}/spec", srv.handleSpec)
+	mux.HandleFunc("GET /policies/{name}/spec", srv.handlePolicyView)
 
 	port := os.Getenv("PORT")
 	if port == "" {

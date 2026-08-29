@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { StageFooterNav } from '@/components/stage-footer-nav'
+import { PolicySpecViewer } from '@/components/policy-spec-viewer'
 import type { StageProps } from '@/pages/stage-props'
 
 interface PaidCallResult {
@@ -101,6 +102,8 @@ export function Stage6Budget({ onNext, onBack }: StageProps) {
         </div>
         <ThemeToggle />
       </div>
+
+      <PolicySpecViewer endpoint="/api/stage-budget/policy-spec" toggleLabel="budget policy spec" />
 
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
         <BudgetCard

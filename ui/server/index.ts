@@ -299,6 +299,26 @@ app.get('/api/stage-tool-policy/policy-spec', async (_req, res) => {
   }
 })
 
+// Stage 6/7 (budget, PII guardrail): read-only spec views over policies
+// that are pre-provisioned by usecase deploy, not clickops-toggled here --
+// same "spec: down" idea as Stage 4's viewer above, but no apply/remove
+// pair, and each view can span more than one live object.
+app.get('/api/stage-budget/policy-spec', async (_req, res) => {
+  try {
+    res.json(await callPolicyController('/policies/budget/spec', 'GET'))
+  } catch (err) {
+    res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
+  }
+})
+
+app.get('/api/stage-pii/policy-spec', async (_req, res) => {
+  try {
+    res.json(await callPolicyController('/policies/pii-guardrail/spec', 'GET'))
+  } catch (err) {
+    res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
+  }
+})
+
 // Stage 4 (tool policy): a fixed, low-value demo order (ORD-1002, $12.50, well
 // under refund-approval's own $75 ask_user threshold) routed through the full
 // support-triage -> order_lookup -> fraud_check -> refund_approval chain, so

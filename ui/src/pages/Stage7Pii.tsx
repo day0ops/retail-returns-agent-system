@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { TopologyNode } from '@/components/topology-node'
 import { StageFooterNav } from '@/components/stage-footer-nav'
+import { PolicySpecViewer } from '@/components/policy-spec-viewer'
 import type { StageProps } from '@/pages/stage-props'
 
 interface OrderRecord {
@@ -106,6 +107,8 @@ export function Stage7Pii({ onNext, onBack }: StageProps) {
           delay={1.2}
         />
       </div>
+
+      <PolicySpecViewer endpoint="/api/stage-pii/policy-spec" toggleLabel="guardrail policy spec" />
 
       <motion.div
         initial={{ opacity: 0, y: 8 }}
