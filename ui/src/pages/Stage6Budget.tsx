@@ -25,8 +25,7 @@ interface CustomerState {
 const emptyState: CustomerState = { loggedIn: false, busy: false, error: null, calls: [] }
 
 /**
- * Stage6Budget is the guided tour's sixth stop, capability "Stage 6" in the
- * design doc's numbering: per-customer LLM spend budgets enforced at
+ * Stage6Budget is the guided tour's sixth stop: per-customer LLM spend budgets enforced at
  * agentgateway (EnterpriseAgentgatewayBudget + entBudgetEnforcement on the
  * shared openai backend), keyed on the customerEmail request dimension
  * (jwt.email) rather than jwt.sub -- see agentic-field-kit's budget-policy

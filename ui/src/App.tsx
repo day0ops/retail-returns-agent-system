@@ -11,10 +11,10 @@ import { Stage7Pii } from '@/pages/Stage7Pii'
 // A lightweight state-based stage switcher, not a router -- with only seven
 // stages built so far a full routing library would be premature. Revisit
 // once more stages land and deep-linking/back-button support starts to
-// matter. Page order here is the tour's presentation order, not the design
-// doc's capability-stage numbering (e.g. Stage3A2AHandoff is capability
-// "Stage 7"; Stage4Elicitation is capability "Stage 3") -- each page's own
-// badge shows its real capability number.
+// matter. Page order here is the tour's presentation order; each page's own
+// "Stage N" badge matches that position (not the original design doc's
+// capability numbering, which had built these out of presentation order --
+// e.g. Stage3A2AHandoff was originally capability "Stage 7").
 const STAGES = [
   Stage1Topology,
   Stage2TokenExchange,

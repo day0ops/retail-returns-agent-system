@@ -37,8 +37,8 @@ interface DenyCheckResponse {
 }
 
 /**
- * Stage5ToolPolicy is the guided tour's fifth stop, "Stage 4" in the design
- * doc's capability numbering, with two independent sub-scenes:
+ * Stage5ToolPolicy is the guided tour's fifth stop, with two independent
+ * sub-scenes:
  *
  * 1. Tool policy (clickops): a presenter's "Apply policy" / "Remove policy"
  *    button controls whether agentgateway's identity-based mcp.authorization
@@ -49,7 +49,7 @@ interface DenyCheckResponse {
  *    amount check (call arguments are never populated at authorization-check
  *    time), so it's indiscriminate across every customer-identity
  *    refund_payment call in the whole demo -- pre-provisioning it
- *    unconditionally would silently change Stage 3's own outcome before a
+ *    unconditionally would silently change Stage 4's own outcome before a
  *    presenter ever reaches this stage. Once applied, a fixed low-value demo
  *    order (ORD-1002, $12.50) is routed through the full support-triage ->
  *    ... -> refund-approval chain (well under refund-approval's own $75
@@ -134,7 +134,7 @@ export function Stage5ToolPolicy({ onNext }: StageProps) {
     <div className="mx-auto flex min-h-svh max-w-3xl flex-col gap-8 px-6 py-16">
       <div className="flex w-full items-start justify-between">
         <div>
-          <p className="text-accent-foreground text-sm font-medium">Stage 4</p>
+          <p className="text-accent-foreground text-sm font-medium">Stage 5</p>
           <h1 className="text-2xl font-semibold">Tool policy &amp; progressive disclosure</h1>
           <p className="text-muted-foreground mt-1 max-w-md text-sm">
             Two independent gateway-level controls: a hard identity-based deny on refund_payment

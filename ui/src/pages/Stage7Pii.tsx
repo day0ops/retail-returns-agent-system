@@ -28,8 +28,7 @@ interface PiiComparison {
 }
 
 /**
- * Stage7Pii is the guided tour's seventh stop, "Stage 5" in the design doc's
- * capability numbering: PII masking / guardrails.
+ * Stage7Pii is the guided tour's seventh and final stop: PII masking / guardrails.
  *
  * A real get_order call for the same order, once direct to order-db-mcp's own
  * Service (raw -- agentgateway never sees it) and once through the actual
@@ -62,7 +61,7 @@ export function Stage7Pii({ onNext }: StageProps) {
     <div className="mx-auto flex min-h-svh max-w-4xl flex-col gap-8 px-6 py-16">
       <div className="flex w-full items-start justify-between">
         <div>
-          <p className="text-accent-foreground text-sm font-medium">Stage 5</p>
+          <p className="text-accent-foreground text-sm font-medium">Stage 7</p>
           <h1 className="text-2xl font-semibold">PII masking / guardrails</h1>
           <p className="text-muted-foreground mt-1 max-w-md text-sm">
             order-db-mcp's real tool result, fetched two ways: direct to its Service (raw), and

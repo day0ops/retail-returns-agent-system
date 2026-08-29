@@ -33,15 +33,15 @@ const ASK_PROMPT =
   'Please process the full refund.'
 
 /**
- * Stage4Elicitation is the guided tour's fourth stop, "Stage 3" in the design
- * doc's capability numbering (elicitation): refund-approval pauses mid-task
- * and asks the customer a real question -- kagent's ask_user tool, not a
- * scripted client-side confirm() dialog. ORD-1001's $89.99 order crosses the
- * $75 threshold that triggers it. This page's BFF talks to support-triage,
- * the same real entry point Stage 7's A2A handoff chain uses -- the pause
- * bubbles up from refund-approval through fraud_check and order_lookup, and a
- * single resume from here completes the whole chain (kagent's hitl/v1 A2A
- * Extension redesign; see docs/superpowers/specs/2026-08-26-retail-returns-copilot-design.md's
+ * Stage4Elicitation is the guided tour's fourth stop (elicitation):
+ * refund-approval pauses mid-task and asks the customer a real question --
+ * kagent's ask_user tool, not a scripted client-side confirm() dialog.
+ * ORD-1001's $89.99 order crosses the $75 threshold that triggers it. This
+ * page's BFF talks to support-triage, the same real entry point Stage 3's
+ * A2A handoff chain uses -- the pause bubbles up from refund-approval
+ * through fraud_check and order_lookup, and a single resume from here
+ * completes the whole chain (kagent's hitl/v1 A2A Extension redesign; see
+ * docs/superpowers/specs/2026-08-26-retail-returns-copilot-design.md's
  * "Known issues to revisit" in agentic-field-kit for the investigation that
  * used to make this a 1-hop-only workaround).
  */
@@ -95,7 +95,7 @@ export function Stage4Elicitation({ onNext }: StageProps) {
     <div className="mx-auto flex min-h-svh max-w-3xl flex-col gap-8 px-6 py-16">
       <div className="flex w-full items-start justify-between">
         <div>
-          <p className="text-accent-foreground text-sm font-medium">Stage 3</p>
+          <p className="text-accent-foreground text-sm font-medium">Stage 4</p>
           <h1 className="text-2xl font-semibold">Elicitation</h1>
           <p className="text-muted-foreground mt-1 max-w-md text-sm">
             When a refund exceeds $75, refund-approval doesn't decide alone -- it pauses mid-task
