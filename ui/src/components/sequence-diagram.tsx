@@ -83,7 +83,7 @@ export function SequenceDiagram({ participants, steps }: SequenceDiagramProps) {
                   d={`M ${x} ${y - 8} q 24 8 0 16`}
                   fill="none"
                   stroke="var(--accent-foreground)"
-                  strokeWidth={1.5}
+                  strokeWidth={1}
                   markerEnd="url(#seq-arrow)"
                 />
               </motion.g>
@@ -113,7 +113,7 @@ export function SequenceDiagram({ participants, steps }: SequenceDiagramProps) {
                 x2={x2}
                 y2={y}
                 stroke="var(--accent-foreground)"
-                strokeWidth={1.5}
+                strokeWidth={1}
                 markerEnd="url(#seq-arrow)"
               />
             </motion.g>
