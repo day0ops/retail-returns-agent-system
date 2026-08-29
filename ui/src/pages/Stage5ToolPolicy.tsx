@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { ArrowRight, Code2, ShieldX, ShieldCheck, XCircle, CheckCircle2 } from 'lucide-react'
+import { Code2, ShieldX, ShieldCheck, XCircle, CheckCircle2, Info } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { StageFooterNav } from '@/components/stage-footer-nav'
 import type { StageProps } from '@/pages/stage-props'
 
 interface McpTool {
@@ -63,7 +64,7 @@ interface DenyCheckResponse {
  * 2. Progressive disclosure: order-db-mcp's tool catalog collapsed into one
  *    code-execution meta-tool via entMcp.codeMode.
  */
-export function Stage5ToolPolicy({ onNext }: StageProps) {
+export function Stage5ToolPolicy({ onNext, onBack }: StageProps) {
   const [comparison, setComparison] = useState<CodemodeComparison | null>(null)
   const [comparisonError, setComparisonError] = useState<string | null>(null)
   const [comparing, setComparing] = useState(false)
@@ -271,6 +272,17 @@ export function Stage5ToolPolicy({ onNext }: StageProps) {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Code2 className="size-4" /> Compare tool catalogs
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Info className="text-muted-foreground size-3.5" />
+                </TooltipTrigger>
+                <TooltipContent>
+                  entMcp.codeMode collapses order-db-mcp's individual tool schemas into a single
+                  code-execution meta-tool -- fewer tokens for the LLM to read as a real catalog
+                  grows to dozens of tools, at the cost of the model writing code instead of calling
+                  tools directly.
+                </TooltipContent>
+              </Tooltip>
             </CardTitle>
             <CardDescription>
               Live-queried from both routes, not hardcoded. At this demo's scale (2 tools) the
@@ -299,11 +311,7 @@ export function Stage5ToolPolicy({ onNext }: StageProps) {
         </Card>
       </motion.div>
 
-      {onNext && (
-        <Button onClick={onNext} variant="secondary" className="self-end">
-          Next <ArrowRight className="size-3.5" />
-        </Button>
-      )}
+      <StageFooterNav onBack={onBack} onNext={onNext} />
     </div>
   )
 }
@@ -344,7 +352,7 @@ function ToolList({ title, tools }: { title: string; tools: McpTool[] }) {
       <ul className="flex flex-col gap-1.5">
         {tools.map((tool) => (
           <li key={tool.name} className="bg-muted rounded-lg p-2 text-xs">
-            <span className="font-mono font-medium">{tool.name}</span>
+            <span className="text-accent-foreground font-mono font-medium">{tool.name}</span>
             {tool.description && <p className="text-muted-foreground mt-0.5">{tool.description}</p>}
           </li>
         ))}
