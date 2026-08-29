@@ -34,15 +34,21 @@ const emptyState: CustomerState = { loggedIn: false, busy: false, error: null, c
  *
  * Two real demo customers, same mechanism, different onBudgetExceeded modes:
  * customer1 is capped on Tokens and set to Block -- a single normal call only
- * spends ~40 of its 200-token cap, so its button fires up to 6 sequential
- * calls (stopping once one is actually blocked) rather than one; customer2
- * is capped on USD and set to Audit, which never blocks -- a single call
- * can't demonstrate anything, so its button fires a batch of concurrent
- * long-response calls to approach/cross the $ cap in one click instead of
- * dozens of manual ones. Confirmed live that Audit-mode budgets never attach
- * any distinguishing response header even well past the cap, so this stage
- * doesn't claim header-level proof for that card -- only the behavioral
- * contrast (blocked vs. not) is real, verifiable proof here.
+ * spends ~40 of its 200-token cap, so its button fires 10 sequential calls
+ * (not just one) to cross it; customer2 is capped on USD and set to Audit,
+ * which never blocks -- a single call can't demonstrate anything, so its
+ * button fires a batch of concurrent long-response calls to approach/cross
+ * the $ cap in one click instead of dozens of manual ones. Confirmed live
+ * that Audit-mode budgets never attach any distinguishing response header
+ * even well past the cap, so this stage doesn't claim header-level proof for
+ * that card -- only the behavioral contrast (blocked vs. not) is real,
+ * verifiable proof here. Also confirmed live that Block-mode enforcement
+ * isn't a simple monotonic "blocked forever the instant the sum crosses 200"
+ * -- a rapid sequential burst can show an occasional success mixed in among
+ * blocks (some refill/timing behavior internal to agentgateway's own
+ * enforcement). Customer 1's button always runs the full batch rather than
+ * stopping at the first block, so the aggregate "N/10 succeeded" stays
+ * accurate and unambiguous regardless of any mid-batch jitter.
  */
 export function Stage6Budget({ onNext }: StageProps) {
   const [customer1, setCustomer1] = useState<CustomerState>(emptyState)
@@ -100,11 +106,11 @@ export function Stage6Budget({ onNext }: StageProps) {
         <BudgetCard
           icon={<Coins className="size-4" />}
           title="Customer 1 — Tokens, Block"
-          description="200 tokens/day. A single call only spends ~40 tokens, so this fires up to 6 sequential calls to cross the cap in one click, stopping as soon as one gets blocked."
+          description="200 tokens/day. A single call only spends ~40 tokens, so this fires 10 sequential calls to cross the cap well within one click."
           state={customer1}
           onLogin={() => login('customer1')}
           onCall={() => makeCall('customer1')}
-          callLabel="Make paid calls until blocked"
+          callLabel="Make 10 paid calls"
         />
         <BudgetCard
           icon={<DollarSign className="size-4" />}
