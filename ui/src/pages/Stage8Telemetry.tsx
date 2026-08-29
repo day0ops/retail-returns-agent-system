@@ -5,26 +5,26 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { StageFooterNav } from '@/components/stage-footer-nav'
-import { SessionTimeline, type TimelineCall } from '@/components/session-timeline'
+import { TraceWaterfallCard, type TraceWaterfall } from '@/components/trace-waterfall'
 import type { StageProps } from '@/pages/stage-props'
 
 interface SessionSummary {
   windowMinutes: number
-  windowStartMs: number
-  windowEndMs: number
   mcp: { totalCalls: number; blockedCalls: number; backendsTouched: string[] }
   llm: { totalCalls: number; totalTokens: number }
-  timeline: TimelineCall[]
+  traces: TraceWaterfall[]
+  tracesShown: number
+  tracesTotal: number
   grafanaUrl: string
 }
 
 /**
  * Stage8Telemetry is the guided tour's eighth and final stop: a session
- * recap queried live from Loki, not a mocked summary. agentgateway's
- * access-log policy (agentic-field-kit's telemetry addon, already applied
- * cluster-wide) fans every request from every stage above into Loki with a
- * rich attribute set (llm.*_tokens, mcp.tool.name/target, jwt claims) --
- * this stage is the first to actually read any of it back.
+ * recap queried live from Loki and Tempo, not a mocked summary. agentgateway's
+ * access-log policy fans every request into Loki (aggregate stats below);
+ * its tracing policy assembles the real per-request span tree in Tempo,
+ * which is what the waterfalls render -- genuine parent/child hops
+ * (Guardrail checks, MCP calls), not a flattened event list.
  */
 export function Stage8Telemetry({ onBack }: StageProps) {
   const [summary, setSummary] = useState<SessionSummary | null>(null)
@@ -53,8 +53,8 @@ export function Stage8Telemetry({ onBack }: StageProps) {
           <p className="text-accent-foreground text-sm font-medium">Stage 8</p>
           <h1 className="text-2xl font-semibold">Session telemetry</h1>
           <p className="text-muted-foreground mt-1 max-w-md text-sm">
-            Everything in Stages 1-7 left a real trace -- agentgateway's access-log policy fans
-            every request into Loki. This recap is queried live, not a mocked summary.
+            Everything in Stages 1-7 left a real trace -- agentgateway fans every request into Loki
+            and Tempo. This recap, including the waterfalls below, is queried live.
           </p>
         </div>
         <ThemeToggle />
@@ -101,18 +101,22 @@ export function Stage8Telemetry({ onBack }: StageProps) {
                 />
               </div>
             )}
-            {summary && summary.timeline.length > 0 && (
+            {summary && summary.traces.length > 0 && (
               <div className="flex flex-col gap-2">
                 <div className="text-muted-foreground flex items-center gap-4 text-xs">
-                  <Legend color="bg-accent-foreground" label="MCP call" />
-                  <Legend color="bg-destructive" label="blocked" />
-                  <Legend color="bg-muted-foreground" label="LLM call" />
+                  <Legend color="bg-accent-foreground" label="MCP trace" />
+                  <Legend color="bg-muted-foreground" label="LLM trace" />
                 </div>
-                <SessionTimeline
-                  calls={summary.timeline}
-                  windowStartMs={summary.windowStartMs}
-                  windowEndMs={summary.windowEndMs}
-                />
+                <div className="flex flex-col gap-2">
+                  {summary.traces.map((trace) => (
+                    <TraceWaterfallCard key={trace.traceId} trace={trace} />
+                  ))}
+                </div>
+                {summary.tracesTotal > summary.tracesShown && (
+                  <p className="text-muted-foreground text-xs">
+                    Showing {summary.tracesShown} most recent of {summary.tracesTotal} calls.
+                  </p>
+                )}
               </div>
             )}
             {summary && (

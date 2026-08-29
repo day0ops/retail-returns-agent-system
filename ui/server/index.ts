@@ -80,6 +80,14 @@ const config = {
   // reachable from this namespace with no NetworkPolicy/mesh authorization in
   // the way.
   lokiUrl: requiredEnv('LOKI_URL'),
+  // Stage 8 (telemetry): Tempo (agentic-field-kit's telemetry addon, same
+  // otel-tracing-policy that's already applied cluster-wide) holds the real
+  // assembled span tree per request -- confirmed live it has genuine
+  // parent-child hierarchy (e.g. a tools/call span with a Guardrail child
+  // span, each with their own inbound/outbound sub-spans), unlike Loki's
+  // access log lines which show each hop as an isolated event with no
+  // shared trace_id linking them.
+  tempoUrl: requiredEnv('TEMPO_URL'),
   // Public HTTPS hostname for the "view full trace in Grafana" deep link --
   // Grafana's own Loki datasource UID is always exactly 'loki' (fixed by
   // kube-prometheus-stack's provisioning, not a random-generated UID; see
@@ -572,30 +580,119 @@ async function queryLoki(logql: string, startNs: bigint, endNs: bigint): Promise
   return body.data.result
 }
 
-interface RecapCall {
-  type: 'mcp' | 'llm'
-  timestampMs: number
-  durationMs: number
-  label: string
-  status: string
-  blocked: boolean
+// Most recent N distinct trace_ids per protocol -- bounds both the number
+// of Tempo lookups this endpoint fires and how many waterfalls the UI has
+// to render, since a busy stage (e.g. Stage 6's 10-call budget batch) can
+// easily produce more traces than are useful to show in a recap.
+const MAX_TRACES_PER_PROTOCOL = 5
+
+function recentDistinctTraceIds(streams: LokiStream[]): string[] {
+  const seen = new Set<string>()
+  const ordered = [...streams].sort((a, b) =>
+    (b.stream.request_start_time ?? '').localeCompare(a.stream.request_start_time ?? ''),
+  )
+  const ids: string[] = []
+  for (const s of ordered) {
+    const id = s.stream.trace_id
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+    ids.push(id)
+    if (ids.length >= MAX_TRACES_PER_PROTOCOL) break
+  }
+  return ids
 }
 
-// Both protocols log request_start_time (ISO 8601) and duration (e.g.
-// "1781ms") as structured metadata, not a Loki-native timestamp field on
-// the stream itself -- confirmed live, same fields already used for the
-// aggregate mcp/llm stats above, just not discarded this time.
-function streamToTimelineCall(s: LokiStream, type: RecapCall['type']): RecapCall | null {
-  const timestampMs = Date.parse(s.stream.request_start_time ?? '')
-  if (Number.isNaN(timestampMs)) return null
-  const durationMs = Number.parseInt(s.stream.duration ?? '0', 10) || 0
-  const status = s.stream.http_status ?? ''
-  const blocked = status !== '' && status !== '200' && status !== '202'
-  const label =
-    type === 'mcp'
-      ? s.stream.backend_name || s.stream.http_path || 'unknown'
-      : s.stream.llm_request_model || 'openai'
-  return { type, timestampMs, durationMs, label, status, blocked }
+interface TempoSpan {
+  spanId: string
+  parentSpanId?: string
+  name: string
+  startTimeUnixNano: string
+  endTimeUnixNano: string
+}
+
+interface WaterfallSpan {
+  spanId: string
+  name: string
+  depth: number
+  offsetUs: number
+  durationUs: number
+}
+
+interface TraceWaterfall {
+  traceId: string
+  protocol: 'mcp' | 'llm'
+  spans: WaterfallSpan[]
+}
+
+async function fetchTempoSpans(traceId: string): Promise<TempoSpan[] | null> {
+  const res = await fetch(`${config.tempoUrl}/api/traces/${traceId}`)
+  if (res.status === 404) return null
+  if (!res.ok) throw new Error(`Tempo query failed: HTTP ${res.status} ${await res.text()}`)
+  const body = (await res.json()) as {
+    batches?: Array<{ scopeSpans: Array<{ spans: TempoSpan[] }> }>
+  }
+  return (body.batches ?? []).flatMap((b) => b.scopeSpans.flatMap((ss) => ss.spans))
+}
+
+// Depth-first pre-order walk of the real parent/child span tree, each
+// span's offset/duration converted to microseconds relative to the
+// trace's own earliest span -- epoch nanoseconds don't fit a JS number
+// safely, so all BigInt math happens here and only small relative values
+// (that do fit) cross into the JSON response.
+function buildWaterfall(
+  traceId: string,
+  protocol: 'mcp' | 'llm',
+  spans: TempoSpan[],
+): TraceWaterfall {
+  const childrenOf = new Map<string, TempoSpan[]>()
+  const byId = new Map(spans.map((s) => [s.spanId, s]))
+  const roots: TempoSpan[] = []
+  for (const s of spans) {
+    if (s.parentSpanId && byId.has(s.parentSpanId)) {
+      if (!childrenOf.has(s.parentSpanId)) childrenOf.set(s.parentSpanId, [])
+      childrenOf.get(s.parentSpanId)!.push(s)
+    } else {
+      roots.push(s)
+    }
+  }
+  const byStart = (a: TempoSpan, b: TempoSpan) =>
+    BigInt(a.startTimeUnixNano) < BigInt(b.startTimeUnixNano) ? -1 : 1
+  roots.sort(byStart)
+  for (const children of childrenOf.values()) children.sort(byStart)
+
+  const traceStart = spans
+    .map((s) => BigInt(s.startTimeUnixNano))
+    .reduce((min, v) => (v < min ? v : min))
+
+  const ordered: WaterfallSpan[] = []
+  const visit = (s: TempoSpan, depth: number) => {
+    const start = BigInt(s.startTimeUnixNano)
+    const end = BigInt(s.endTimeUnixNano)
+    ordered.push({
+      spanId: s.spanId,
+      name: s.name,
+      depth,
+      offsetUs: Number((start - traceStart) / 1000n),
+      durationUs: Number((end - start) / 1000n),
+    })
+    for (const child of childrenOf.get(s.spanId) ?? []) visit(child, depth + 1)
+  }
+  for (const r of roots) visit(r, 0)
+
+  return { traceId, protocol, spans: ordered }
+}
+
+async function fetchWaterfalls(
+  traceIds: string[],
+  protocol: 'mcp' | 'llm',
+): Promise<TraceWaterfall[]> {
+  const results = await Promise.all(
+    traceIds.map(async (traceId) => {
+      const spans = await fetchTempoSpans(traceId)
+      return spans && spans.length > 0 ? buildWaterfall(traceId, protocol, spans) : null
+    }),
+  )
+  return results.filter((w): w is TraceWaterfall => w !== null)
 }
 
 // Grafana Explore's documented URL-state shape (schemaVersion 1, single pane)
@@ -652,17 +749,14 @@ app.get('/api/stage8/session-summary', async (_req, res) => {
       0,
     )
 
-    const timeline = [
-      ...mcpStreams.map((s) => streamToTimelineCall(s, 'mcp')),
-      ...llmStreams.map((s) => streamToTimelineCall(s, 'llm')),
-    ]
-      .filter((c): c is RecapCall => c !== null)
-      .sort((a, b) => a.timestampMs - b.timestampMs)
+    const [mcpTraces, llmTraces] = await Promise.all([
+      fetchWaterfalls(recentDistinctTraceIds(mcpStreams), 'mcp'),
+      fetchWaterfalls(recentDistinctTraceIds(llmStreams), 'llm'),
+    ])
+    const traces = [...mcpTraces, ...llmTraces]
 
     res.json({
       windowMinutes: SESSION_WINDOW_MINUTES,
-      windowStartMs: startMs,
-      windowEndMs: endMs,
       mcp: {
         totalCalls: mcpCalls.length,
         blockedCalls: mcpCalls.filter((c) => c.blocked).length,
@@ -672,7 +766,9 @@ app.get('/api/stage8/session-summary', async (_req, res) => {
         totalCalls: llmStreams.length,
         totalTokens: llmTotalTokens,
       },
-      timeline,
+      traces,
+      tracesShown: traces.length,
+      tracesTotal: mcpStreams.length + llmStreams.length,
       grafanaUrl: buildGrafanaExploreUrl(mcpQuery, startMs, endMs),
     })
   } catch (err) {
