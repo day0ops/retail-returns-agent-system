@@ -60,7 +60,7 @@ export function Stage7Pii({ onNext, onBack }: StageProps) {
   }
 
   return (
-    <div className="mx-auto flex min-h-svh max-w-4xl flex-col gap-8 px-6 py-16">
+    <div className="mx-auto flex min-h-svh max-w-7xl flex-col gap-8 px-6 py-16">
       <div className="flex w-full items-start justify-between">
         <div>
           <p className="text-accent-foreground text-sm font-medium">Stage 7</p>

@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { StageFooterNav } from '@/components/stage-footer-nav'
+import { cn } from '@/lib/utils'
 import type { StageProps } from '@/pages/stage-props'
 
 interface McpTool {
@@ -234,11 +235,18 @@ export function Stage5ToolPolicy({ onNext, onBack }: StageProps) {
                 </TooltipContent>
               </Tooltip>
               {policyApplied !== null && (
-                <Badge variant={policyApplied ? 'destructive' : 'secondary'} className="gap-1">
+                <Badge
+                  variant="secondary"
+                  className={cn(
+                    'gap-1',
+                    policyApplied &&
+                      'bg-green-600/10 text-green-600 dark:bg-green-500/20 dark:text-green-500',
+                  )}
+                >
                   {policyApplied ? (
-                    <ShieldX className="size-3" />
-                  ) : (
                     <ShieldCheck className="size-3" />
+                  ) : (
+                    <ShieldX className="size-3" />
                   )}
                   {policyApplied ? 'Policy applied' : 'Policy not applied'}
                 </Badge>
