@@ -68,7 +68,7 @@ export function Stage2TokenExchange({ onNext }: StageProps) {
     <div className="mx-auto flex min-h-svh max-w-3xl flex-col gap-8 px-6 py-16">
       <div className="flex w-full items-start justify-between">
         <div>
-          <p className="text-accent text-sm font-medium">Stage 2</p>
+          <p className="text-accent-foreground text-sm font-medium">Stage 2</p>
           <h1 className="text-2xl font-semibold">Identity & token exchange</h1>
           <p className="text-muted-foreground mt-1 max-w-md text-sm">
             The customer's token is exchanged for a scoped downstream token before it ever reaches

@@ -62,7 +62,7 @@ export function Stage7Pii({ onNext }: StageProps) {
     <div className="mx-auto flex min-h-svh max-w-4xl flex-col gap-8 px-6 py-16">
       <div className="flex w-full items-start justify-between">
         <div>
-          <p className="text-accent text-sm font-medium">Stage 5</p>
+          <p className="text-accent-foreground text-sm font-medium">Stage 5</p>
           <h1 className="text-2xl font-semibold">PII masking / guardrails</h1>
           <p className="text-muted-foreground mt-1 max-w-md text-sm">
             order-db-mcp's real tool result, fetched two ways: direct to its Service (raw), and
@@ -160,7 +160,7 @@ function Arrow({ delay }: { delay: number }) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.3, delay }}
-      className="text-muted-foreground flex items-center justify-center px-1 text-lg sm:rotate-0"
+      className="text-accent-foreground flex items-center justify-center px-1 text-lg sm:rotate-0"
     >
       <span className="sm:hidden">↓</span>
       <span className="hidden sm:inline">→</span>

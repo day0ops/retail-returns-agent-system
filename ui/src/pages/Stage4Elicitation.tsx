@@ -95,7 +95,7 @@ export function Stage4Elicitation({ onNext }: StageProps) {
     <div className="mx-auto flex min-h-svh max-w-3xl flex-col gap-8 px-6 py-16">
       <div className="flex w-full items-start justify-between">
         <div>
-          <p className="text-accent text-sm font-medium">Stage 3</p>
+          <p className="text-accent-foreground text-sm font-medium">Stage 3</p>
           <h1 className="text-2xl font-semibold">Elicitation</h1>
           <p className="text-muted-foreground mt-1 max-w-md text-sm">
             When a refund exceeds $75, refund-approval doesn't decide alone -- it pauses mid-task
