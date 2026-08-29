@@ -114,6 +114,7 @@ export function Stage7Pii({ onNext, onBack }: StageProps) {
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 1.4 }}
+        className="max-w-3xl"
       >
         <Card>
           <CardHeader>
