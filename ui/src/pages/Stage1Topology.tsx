@@ -77,17 +77,19 @@ export function Stage1Topology({ onNext, onBack }: StageProps) {
               </p>
             </div>
 
-            <Arrow delay={0.8} />
+            <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-center">
+              <Arrow delay={0.8} />
 
-            <TopologyNode
-              icon={ShieldCheck}
-              title="agentgateway"
-              subtitle="Every agent ↔ MCP call routes through here"
-              badge="Data plane"
-              delay={1.0}
-            />
+              <TopologyNode
+                icon={ShieldCheck}
+                title="agentgateway"
+                subtitle="Every agent ↔ MCP call routes through here"
+                badge="Data plane"
+                delay={1.0}
+              />
 
-            <Arrow delay={1.2} />
+              <Arrow delay={1.2} />
+            </div>
 
             <div className="border-border/70 flex min-h-[450px] flex-col items-center gap-3 rounded-xl border border-dashed p-4">
               <p className="text-muted-foreground self-start text-[11px] font-semibold tracking-wide uppercase">
