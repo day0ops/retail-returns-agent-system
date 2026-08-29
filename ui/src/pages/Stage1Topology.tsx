@@ -220,17 +220,17 @@ function MutedNode({
 function BusConnector() {
   return (
     <div aria-hidden className="pointer-events-none absolute inset-0 hidden sm:block">
-      <div className="bg-accent-foreground absolute top-[200px] left-[442px] h-[262px] w-0.5 -translate-x-1/2" />
-      <div className="bg-accent-foreground absolute top-[462px] left-[129px] h-0.5 w-[626px]" />
-      <div className="bg-accent-foreground absolute top-[450px] left-[129px] h-3 w-0.5 -translate-x-1/2" />
-      <div className="bg-accent-foreground absolute top-[450px] left-[755px] h-3 w-0.5 -translate-x-1/2" />
+      <div className="bg-accent-foreground absolute top-[200px] left-[442px] h-[262px] w-px -translate-x-1/2" />
+      <div className="bg-accent-foreground absolute top-[462px] left-[129px] h-px w-[626px]" />
+      <div className="bg-accent-foreground absolute top-[450px] left-[129px] h-3 w-px -translate-x-1/2" />
+      <div className="bg-accent-foreground absolute top-[450px] left-[755px] h-3 w-px -translate-x-1/2" />
       {/* Continues past this wrapper's own height (overflow is visible, not
           clipped) most of the way down to the Foundation/Ambient card --
           closes what would otherwise be a large visible break, while still
           stopping short of the card by the same ~24px gap every other
           Connector on this page leaves before the box it leads into
           (measured from the agentregistry->kagent gap, not guessed). */}
-      <div className="bg-accent-foreground absolute top-[462px] left-[442px] h-[116px] w-0.5 -translate-x-1/2" />
+      <div className="bg-accent-foreground absolute top-[462px] left-[442px] h-[116px] w-px -translate-x-1/2" />
     </div>
   )
 }
