@@ -137,6 +137,20 @@ export function extractReplyText(result: unknown): string {
   return JSON.stringify(result)
 }
 
+// A completed task's reply lives in its artifacts (see extractReplyText above);
+// anything else -- most commonly TASK_STATE_FAILED, the agent framework's own
+// catch-all for an internal error -- still returns replyText (the error
+// description), so callers that want to tell a real reply from a failure need
+// this separately rather than guessing from the text itself. TASK_STATE_INPUT_REQUIRED
+// is excluded -- that's a normal pause (see extractPendingQuestion), not a failure.
+export function isTaskFailed(result: unknown): boolean {
+  if (!result || typeof result !== 'object') return false
+  const obj = result as Record<string, unknown>
+  if (obj.kind !== 'task') return false
+  const status = obj.status as Record<string, unknown> | undefined
+  return status?.state !== 'TASK_STATE_COMPLETED' && status?.state !== 'TASK_STATE_INPUT_REQUIRED'
+}
+
 export interface ToolCallStep {
   name: string
   args?: unknown

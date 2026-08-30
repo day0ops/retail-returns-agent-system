@@ -33,6 +33,7 @@ export function Stage2TokenExchange({ onNext, onBack }: StageProps) {
   const [loggingIn, setLoggingIn] = useState(false)
 
   const [agentReply, setAgentReply] = useState<string | null>(null)
+  const [agentFailed, setAgentFailed] = useState(false)
   const [askError, setAskError] = useState<string | null>(null)
   const [asking, setAsking] = useState(false)
 
@@ -64,6 +65,7 @@ export function Stage2TokenExchange({ onNext, onBack }: StageProps) {
       const body = await res.json()
       if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`)
       setAgentReply(body.replyText)
+      setAgentFailed(Boolean(body.failed))
     } catch (err) {
       setAskError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -175,7 +177,7 @@ export function Stage2TokenExchange({ onNext, onBack }: StageProps) {
         </Card>
       </motion.div>
 
-      {customerClaims && agentReply && (
+      {customerClaims && agentReply && !agentFailed && (
         <p className="text-muted-foreground flex items-center gap-1.5 text-sm">
           <Badge>Exchange verified</Badge>
           <ArrowRight className="size-3.5" />
