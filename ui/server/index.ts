@@ -8,6 +8,7 @@ import {
   extractToolCallSteps,
   extractPendingQuestion,
   resumeWithAnswer,
+  isTaskFailed,
   type PendingQuestion,
 } from './a2a.js'
 import { listTools, callTool } from './mcp.js'
@@ -159,7 +160,7 @@ app.post('/api/stage2/ask', async (req, res) => {
   }
   try {
     const result = await sendMessage(config.supportTriageUrl, message, currentCustomerToken)
-    res.json(result)
+    res.json({ ...result, failed: isTaskFailed(result.raw) })
   } catch (err) {
     res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
   }
