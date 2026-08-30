@@ -120,8 +120,19 @@ const budgetCustomerTokens: Record<'customer1' | 'customer2', string | null> = {
 const app = express()
 app.use(express.json())
 
-app.post('/api/stage2/login', async (_req, res) => {
+app.post('/api/stage2/login', async (req, res) => {
   try {
+    // If the request came in through the public OIDC gate (agentgateway's ExtAuth,
+    // ahead of every request to this app), ext-auth-service already forwarded the
+    // visitor's own Keycloak access token in this header -- reveal that identity
+    // rather than running a second, separate ROPC login. Falls back to ROPC when the
+    // header is absent (e.g. local dev via port-forward, with no gate in front).
+    const forwardedToken = req.header('x-retail-returns-customer-token')
+    if (forwardedToken) {
+      currentCustomerToken = forwardedToken
+      res.json({ claims: decodeJwtClaims(forwardedToken), viaGate: true })
+      return
+    }
     const token = await loginResourceOwnerPasswordCredentials({
       tokenUrl: config.keycloakTokenUrl,
       clientId: config.keycloakClientId,
@@ -130,7 +141,7 @@ app.post('/api/stage2/login', async (_req, res) => {
       password: config.demoCustomerPassword,
     })
     currentCustomerToken = token.access_token
-    res.json({ claims: decodeJwtClaims(token.access_token) })
+    res.json({ claims: decodeJwtClaims(token.access_token), viaGate: false })
   } catch (err) {
     res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
   }
