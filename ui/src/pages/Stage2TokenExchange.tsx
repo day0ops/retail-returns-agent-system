@@ -15,17 +15,20 @@ const ASK_PROMPT =
   'Please call the whoami diagnostic tool on order-db and tell me exactly what it returned, including every claim.'
 
 /**
- * Stage2TokenExchange is the guided tour's second stop: a real customer login
- * (Resource Owner Password Credentials against Keycloak, via the BFF), then a
- * real call to support-triage carrying that token. The point of this stage is
- * proving the RFC 8693 exchange actually happened -- so it shows the
- * customer's original token claims next to what order-db's `whoami`
- * diagnostic tool says it actually received, not just a description of the
- * mechanism.
+ * Stage2TokenExchange is the guided tour's second stop: confirming the real customer
+ * identity Keycloak already established (via the app's public OIDC login gate, whose
+ * access token agentgateway's ExtAuth forwards to the BFF -- see
+ * /api/stage2/login's viaGate path; falls back to a direct ROPC login only when
+ * there's no gate in front, e.g. local dev via port-forward), then a real call to
+ * support-triage carrying that token. The point of this stage is proving the RFC 8693
+ * exchange actually happened -- so it shows the customer's original token claims next
+ * to what order-db's `whoami` diagnostic tool says it actually received, not just a
+ * description of the mechanism.
  */
 export function Stage2TokenExchange({ onNext, onBack }: StageProps) {
   const [flowExpanded, setFlowExpanded] = useState(false)
   const [customerClaims, setCustomerClaims] = useState<Claims | null>(null)
+  const [viaGate, setViaGate] = useState(false)
   const [loginError, setLoginError] = useState<string | null>(null)
   const [loggingIn, setLoggingIn] = useState(false)
 
@@ -41,6 +44,7 @@ export function Stage2TokenExchange({ onNext, onBack }: StageProps) {
       const body = await res.json()
       if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`)
       setCustomerClaims(body.claims)
+      setViaGate(Boolean(body.viaGate))
     } catch (err) {
       setLoginError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -103,20 +107,28 @@ export function Stage2TokenExchange({ onNext, onBack }: StageProps) {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <LogIn className="size-4" /> 1. Log in as the demo customer
+              <LogIn className="size-4" /> 1. Confirm your identity
             </CardTitle>
             <CardDescription>
-              A real Resource Owner Password Credentials login against Keycloak's
-              retail-returns-customers realm.
+              If you came in through the public login gate, Keycloak already authenticated you there
+              — this reveals that identity. Without the gate (local/dev access), it logs in directly
+              instead.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             <Button onClick={handleLogin} disabled={loggingIn} className="w-fit">
-              {loggingIn ? 'Logging in…' : customerClaims ? 'Log in again' : 'Log in as customer'}
+              {loggingIn ? 'Checking…' : customerClaims ? 'Refresh identity' : 'Reveal my identity'}
             </Button>
             {loginError && <p className="text-destructive text-sm">{loginError}</p>}
             {customerClaims && (
-              <ClaimsBlock label="Customer's original token" claims={customerClaims} />
+              <>
+                <p className="text-muted-foreground text-xs">
+                  {viaGate
+                    ? 'Established by the public OIDC gate (agentgateway ExtAuth) — no password posted here.'
+                    : 'Direct ROPC login (local/dev mode, no public gate in front of this request).'}
+                </p>
+                <ClaimsBlock label="Customer's original token" claims={customerClaims} />
+              </>
             )}
           </CardContent>
         </Card>
