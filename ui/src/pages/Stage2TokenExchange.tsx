@@ -110,9 +110,9 @@ export function Stage2TokenExchange({ onNext, onBack }: StageProps) {
               <LogIn className="size-4" /> 1. Confirm your identity
             </CardTitle>
             <CardDescription>
-              If you came in through the public login gate, Keycloak already authenticated
-              you there — this reveals that identity. Without the gate (local/dev access), it
-              logs in directly instead.
+              If you came in through the public login gate, Keycloak already authenticated you there
+              — this reveals that identity. Without the gate (local/dev access), it logs in directly
+              instead.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
