@@ -9,6 +9,7 @@ import { Stage5ToolPolicy } from '@/pages/Stage5ToolPolicy'
 import { Stage6Budget } from '@/pages/Stage6Budget'
 import { Stage7Pii } from '@/pages/Stage7Pii'
 import { Stage8Telemetry } from '@/pages/Stage8Telemetry'
+import { Stage9CarrierElicitation } from '@/pages/Stage9CarrierElicitation'
 
 // A lightweight state-based stage switcher, not a router -- with only eight
 // stages built so far a full routing library would be premature. Revisit
@@ -26,6 +27,7 @@ const STAGES = [
   Stage6Budget,
   Stage7Pii,
   Stage8Telemetry,
+  Stage9CarrierElicitation,
 ] as const
 
 function App() {

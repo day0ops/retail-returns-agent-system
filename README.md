@@ -11,10 +11,10 @@
 
 ## What is this
 
-This repo is the source for a demo where a small team of AI agents handles a
-customer's product return, step by step, in front of a live audience. You
-watch an agent look up an order, check it for fraud signals, and approve a
-refund, all backed by real infrastructure rather than a scripted mock.
+This repo is the source for a demo where a small team of AI agents handles a customer's product return, step by step. 
+You watch an agent look up an order, check it for fraud signals, and approve a refund, all backed by real infrastructure rather than a scripted mock.
+
+![](./images/image.png)
 
 ## Repo layout
 
@@ -30,9 +30,9 @@ mcp-servers/
   shipping/
   inventory/
   fraud-scoring/
-ui/                      # guided-tour SPA + BFF
-.github/workflows/
-  build-images.yml       # path-filtered matrix build -> GCP Artifact Registry
+pii-guardrail/
+stage-policy-controller/
+ui/
 ```
 
 ## Learn more

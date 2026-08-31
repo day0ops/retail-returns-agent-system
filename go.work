@@ -5,6 +5,7 @@ use (
 	./agents/order-lookup
 	./agents/refund-approval
 	./agents/support-triage
+	./mcp-servers/carrier
 	./mcp-servers/fraud-scoring
 	./mcp-servers/inventory
 	./mcp-servers/order-db

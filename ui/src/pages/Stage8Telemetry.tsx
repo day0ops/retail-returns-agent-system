@@ -19,14 +19,14 @@ interface SessionSummary {
 }
 
 /**
- * Stage8Telemetry is the guided tour's eighth and final stop: a session
- * recap queried live from Loki and Tempo, not a mocked summary. agentgateway's
- * access-log policy fans every request into Loki (aggregate stats below);
- * its tracing policy assembles the real per-request span tree in Tempo,
- * which is what the waterfalls render -- genuine parent/child hops
- * (Guardrail checks, MCP calls), not a flattened event list.
+ * Stage8Telemetry is the guided tour's eighth stop: a session recap queried
+ * live from Loki and Tempo, not a mocked summary. agentgateway's access-log
+ * policy fans every request into Loki (aggregate stats below); its tracing
+ * policy assembles the real per-request span tree in Tempo, which is what
+ * the waterfalls render -- genuine parent/child hops (Guardrail checks, MCP
+ * calls), not a flattened event list.
  */
-export function Stage8Telemetry({ onBack }: StageProps) {
+export function Stage8Telemetry({ onNext, onBack }: StageProps) {
   const [summary, setSummary] = useState<SessionSummary | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -130,7 +130,7 @@ export function Stage8Telemetry({ onBack }: StageProps) {
         </Card>
       </motion.div>
 
-      <StageFooterNav onBack={onBack} />
+      <StageFooterNav onBack={onBack} onNext={onNext} nextLabel="Next: Carrier account linking" />
     </div>
   )
 }
