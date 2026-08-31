@@ -11,7 +11,8 @@ import {
   isTaskFailed,
   type PendingQuestion,
 } from './a2a.js'
-import { listTools, callTool } from './mcp.js'
+import { listTools, callTool, McpHttpError } from './mcp.js'
+import { listElicitations, completeElicitation, type PendingElicitation } from './elicitation.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -95,6 +96,15 @@ const config = {
   // agentic-field-kit's telemetry addon PLUGIN_TO_UID map), so the Explore
   // URL is safely hardcoded rather than looked up.
   grafanaUrl: requiredEnv('GRAFANA_URL'),
+  // Stage 9 (agentgateway interactive elicitation): carrier-mcp's own
+  // AgentRegistry-managed route -- a dedicated server/Backend from
+  // shipping-mcp (see agentic-field-kit's Phase 9 plan doc for why), gated by
+  // entElicitation + entTokenExchange.solo.
+  carrierMcpUrl: requiredEnv('CARRIER_MCP_URL'),
+  // The enterprise agentgateway controller's own token-exchange/elicitation
+  // STS, reached directly (not through agentgateway's own proxied routes) --
+  // its /elicitations management API is a separate concern from MCP traffic.
+  elicitationStsUrl: requiredEnv('ELICITATION_STS_URL'),
 }
 
 // Demo-scoped simplification: a single in-memory "current customer session",
@@ -430,6 +440,108 @@ app.get('/api/stage-pii/compare', async (_req, res) => {
   } catch (err) {
     res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
   }
+})
+
+// Stage 9 (agentgateway interactive elicitation): the paused elicitation
+// (if any), same demo-scoped in-memory-singleton caveat as
+// currentCustomerToken -- one presenter, one pending carrier link at a time.
+let pendingCarrierElicitation: PendingElicitation | null = null
+
+// Stage 9: attempts to link the customer's carrier account. The first call
+// for a customer who hasn't yet consented is gated by agentgateway itself
+// (entTokenExchange.solo, real HTTP 400 before the request reaches
+// carrier-mcp at all) -- this resolves the real OAuth provider details via
+// the STS's own management API so the frontend can drive a real consent
+// popup, rather than simulating the gate.
+app.post('/api/stage9/link-carrier', async (req, res) => {
+  if (!currentCustomerToken) {
+    res.status(401).json({ error: 'not logged in — call /api/stage2/login first' })
+    return
+  }
+  const orderId = typeof req.body?.orderId === 'string' ? req.body.orderId : null
+  if (!orderId) {
+    res.status(400).json({ error: 'orderId (string) is required' })
+    return
+  }
+  try {
+    const result = await callTool(
+      config.carrierMcpUrl,
+      'link_carrier_account',
+      { order_id: orderId },
+      currentCustomerToken,
+    )
+    res.json({ kind: 'linked', result })
+  } catch (err) {
+    if (err instanceof McpHttpError) {
+      const pending = (await listElicitations(config.elicitationStsUrl, currentCustomerToken)).find(
+        (e) => e.status === 'pending',
+      )
+      if (pending) {
+        pendingCarrierElicitation = pending
+        res.json({ kind: 'elicitation-required', elicitation: pending })
+        return
+      }
+    }
+    res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
+  }
+})
+
+// Stage 9: completes the paused elicitation with a real authorization code
+// (obtained by the frontend's own popup window against carrier-portal), then
+// retries the original call. The STS performs the real code -> token
+// exchange server-side; a successful retry here is the actual proof, not a
+// simulated "looks done" state.
+app.post('/api/stage9/complete', async (req, res) => {
+  if (!currentCustomerToken) {
+    res.status(401).json({ error: 'not logged in — call /api/stage2/login first' })
+    return
+  }
+  if (!pendingCarrierElicitation) {
+    res.status(400).json({ error: 'no pending elicitation — call /api/stage9/link-carrier first' })
+    return
+  }
+  const code = typeof req.body?.code === 'string' ? req.body.code : null
+  const orderId = typeof req.body?.orderId === 'string' ? req.body.orderId : null
+  if (!code || !orderId) {
+    res.status(400).json({ error: 'code (string) and orderId (string) are required' })
+    return
+  }
+  try {
+    await completeElicitation(
+      config.elicitationStsUrl,
+      currentCustomerToken,
+      pendingCarrierElicitation,
+      code,
+    )
+    const result = await callTool(
+      config.carrierMcpUrl,
+      'link_carrier_account',
+      { order_id: orderId },
+      currentCustomerToken,
+    )
+    pendingCarrierElicitation = null
+    res.json({ kind: 'linked', result })
+  } catch (err) {
+    res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
+  }
+})
+
+// Stage 9: the carrier IdP redirects here after the customer consents. This
+// route runs inside the popup window the frontend opened -- it hands the
+// authorization code back to the opener (the main tour tab) via postMessage
+// and closes itself, rather than completing the elicitation here directly,
+// since the opener already holds the pending elicitation's context.
+app.get('/api/stage9/callback', (req, res) => {
+  const code = typeof req.query.code === 'string' ? req.query.code : null
+  const error = typeof req.query.error === 'string' ? req.query.error : null
+  const payload = JSON.stringify({ source: 'stage9-carrier-callback', code, error })
+  res.set('Content-Type', 'text/html')
+  res.send(
+    `<!doctype html><script>` +
+      `window.opener && window.opener.postMessage(${payload}, window.location.origin);` +
+      `window.close();` +
+      `</script>`,
+  )
 })
 
 // Stage 6 (budget control): headers worth surfacing to the UI from a real

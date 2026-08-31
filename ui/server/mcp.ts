@@ -14,6 +14,23 @@ interface JsonRpcRequest {
   params?: Record<string, unknown>
 }
 
+// Stage 9 (agentgateway interactive elicitation): an HTTP-level (not
+// JSON-RPC) failure from the MCP endpoint itself, e.g. agentgateway's
+// entTokenExchange gate returning 400 {"url": "..."} before the request ever
+// reaches the MCP server. Kept as a real subclass (not string-matching the
+// generic Error below) so a caller can distinguish "this call needs
+// elicitation" from an ordinary MCP failure.
+export class McpHttpError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly body: string,
+    method: string,
+  ) {
+    super(`MCP request '${method}' failed: ${status} ${body}`)
+    this.name = 'McpHttpError'
+  }
+}
+
 // A Streamable HTTP MCP server may respond with plain JSON or an SSE stream
 // (text/event-stream) even for a single non-push response -- the MCP spec
 // permits either. Handles both rather than assuming one.
@@ -33,9 +50,7 @@ async function mcpCall(
   const res = await fetch(mcpUrl, { method: 'POST', headers, body: JSON.stringify(body) })
   if (!res.ok) {
     const errText = await res.text().catch(() => '')
-    throw new Error(
-      `MCP request '${body.method}' failed: ${res.status} ${res.statusText} ${errText}`,
-    )
+    throw new McpHttpError(res.status, errText, body.method)
   }
 
   const newSessionId = res.headers.get('Mcp-Session-Id') ?? sessionId
