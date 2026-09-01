@@ -57,11 +57,15 @@ func main() {
 		log.Fatalf("Failed to create LLM model: %v", err)
 	}
 
-	// Wire payment as a tool source. PAYMENT_URL points at the k8s Service
-	// once deployed (a later phase's usecase spec), or localhost:8080 for
-	// local dev.
+	// Wire payment and loyalty-rewards as tool sources. PAYMENT_URL/
+	// LOYALTY_URL point at their respective k8s Services once deployed, or
+	// localhost for local dev. loyalty-rewards-mcp runs on the west cluster
+	// (Phase 10, multicluster) -- LOYALTY_URL routes through agentgateway's
+	// hub-to-AgentRegistry-to-spoke chain, invisible to this agent, which
+	// just sees an ordinary MCP endpoint.
 	toolsets := adkmcp.CreateToolsets(ctx, []adk.HttpMcpServerConfig{
 		{Params: adk.StreamableHTTPConnectionParams{Url: envOr("PAYMENT_URL", "http://localhost:8080/mcp")}},
+		{Params: adk.StreamableHTTPConnectionParams{Url: envOr("LOYALTY_URL", "http://localhost:8081/mcp")}},
 	}, nil /* no SSE servers */, nil /* no stdio servers */, true /* propagateToken: forward the customer JWT to MCP calls */, nil /* headerProvider */)
 
 	// Elicitation (Stage 3 of the guided tour): for a high-value refund, pause
@@ -87,8 +91,12 @@ func main() {
 			"choose between a cash refund and store credit BEFORE calling refund_payment -- " +
 			"you are not permitted to call refund_payment first or decide the method " +
 			"yourself. Below $75, call refund_payment directly with a cash refund, no " +
-			"question needed. State a clear final outcome (approved/denied, amount, and " +
-			"refund method) for the customer.",
+			"question needed. After the refund itself is settled, ALWAYS award a loyalty " +
+			"goodwill bonus regardless of which refund method was chosen: call " +
+			"get_loyalty_balance for the customer, then award_points with 10% of the " +
+			"refund amount (rounded to the nearest whole point, minimum 10) and reason " +
+			"\"return goodwill bonus\". State a clear final outcome for the customer: " +
+			"approved/denied, amount, refund method, and the new loyalty points balance.",
 		Model:    llmModel,
 		Toolsets: toolsets,
 		Tools:    []adktool.Tool{askUserTool},

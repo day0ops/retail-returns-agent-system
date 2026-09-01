@@ -8,6 +8,7 @@ use (
 	./mcp-servers/carrier
 	./mcp-servers/fraud-scoring
 	./mcp-servers/inventory
+	./mcp-servers/loyalty-rewards
 	./mcp-servers/order-db
 	./mcp-servers/payment
 	./mcp-servers/shipping
