@@ -60,11 +60,14 @@ func main() {
 	// Next hop of the A2A chain: hand off to fraud_check once order/shipment
 	// details are confirmed. propagateToken: true forwards the customer's JWT
 	// on this outbound A2A call the same way it's forwarded to the MCP calls above.
+	// isolateSessions: true -- see support-triage/main.go's order_lookup tool for
+	// why (confirmed live: without it, this hop's sub-agent session accumulates
+	// across every unrelated request for this pod's whole lifetime).
 	fraudCheckTool, err := adktools.NewKAgentRemoteA2ATool(
 		"fraud_check",
 		"Delegates transaction fraud risk scoring to the fraud-check agent",
 		envOr("FRAUD_CHECK_AGENT_URL", "http://localhost:8082"),
-		nil, nil, true, false,
+		nil, nil, true, true,
 	)
 	if err != nil {
 		log.Fatalf("Failed to create fraud_check A2A tool: %v", err)

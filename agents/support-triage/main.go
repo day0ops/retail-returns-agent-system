@@ -60,11 +60,19 @@ func main() {
 	// First hop of the A2A chain: hand off eligibility/fraud/refund work to
 	// order-lookup. propagateToken: true forwards the customer's JWT on this
 	// outbound A2A call the same way it's forwarded to order-db above.
+	// isolateSessions: true -- each incoming customer request is an independent
+	// return, not a continuation of a prior conversation. Without this, every
+	// call sharing this agent's fixed process lifetime collapses into one ever-
+	// growing sub-agent session (confirmed live: the same session id persisted
+	// across 10+ unrelated requests spanning 43 minutes), and the downstream
+	// LLM starts reasoning from stale accumulated history instead of the
+	// current request -- e.g. skipping a real action because it looks, from
+	// that shared history, like it was already done in an earlier "turn".
 	orderLookupTool, err := adktools.NewKAgentRemoteA2ATool(
 		"order_lookup",
 		"Delegates order and shipment detail lookup to the order-lookup agent",
 		envOr("ORDER_LOOKUP_AGENT_URL", "http://localhost:8081"),
-		nil, nil, true, false,
+		nil, nil, true, true,
 	)
 	if err != nil {
 		log.Fatalf("Failed to create order_lookup A2A tool: %v", err)
