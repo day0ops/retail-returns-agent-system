@@ -10,8 +10,9 @@ import { Stage6Budget } from '@/pages/Stage6Budget'
 import { Stage7Pii } from '@/pages/Stage7Pii'
 import { Stage8Telemetry } from '@/pages/Stage8Telemetry'
 import { Stage9CarrierElicitation } from '@/pages/Stage9CarrierElicitation'
+import { Stage10Multicluster } from '@/pages/Stage10Multicluster'
 
-// A lightweight state-based stage switcher, not a router -- with only eight
+// A lightweight state-based stage switcher, not a router -- with only ten
 // stages built so far a full routing library would be premature. Revisit
 // once more stages land and deep-linking starts to matter. Page order here
 // is the tour's presentation order; each page's own "Stage N" badge matches
@@ -28,6 +29,7 @@ const STAGES = [
   Stage7Pii,
   Stage8Telemetry,
   Stage9CarrierElicitation,
+  Stage10Multicluster,
 ] as const
 
 function App() {

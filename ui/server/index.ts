@@ -105,6 +105,13 @@ const config = {
   // STS, reached directly (not through agentgateway's own proxied routes) --
   // its /elicitations management API is a separate concern from MCP traffic.
   elicitationStsUrl: requiredEnv('ELICITATION_STS_URL'),
+  // Stage 10 (multicluster): loyalty-rewards-mcp's own AgentRegistry-managed
+  // route -- physically runs on the west cluster, but reached the same way
+  // as every other server from this BFF's perspective (see agentic-field-
+  // kit's Phase 10 plan doc for the cross-cluster wiring). Used for a direct
+  // before/after balance check alongside the real chain run, the same
+  // "unambiguous proof" pattern Stage 4's directCheck already uses.
+  loyaltyMcpUrl: requiredEnv('LOYALTY_MCP_URL'),
 }
 
 // Demo-scoped simplification: a single in-memory "current customer session",
@@ -542,6 +549,80 @@ app.get('/api/stage9/callback', (req, res) => {
       `window.close();` +
       `</script>`,
   )
+})
+
+// Stage 10 (multicluster): loyalty-rewards-mcp runs entirely on the west
+// cluster, cataloged into east's AgentRegistry via a cross-cluster
+// mesh.internal URL (see agentic-field-kit's Phase 10 plan doc). refund-
+// approval now also awards a loyalty goodwill bonus as part of finishing any
+// return -- this is the real chain, not a separate mechanism grafted on for
+// the demo. Reuses Stage 5's fixed demo order (ORD-1002, $12.50, CUST-100)
+// so no new elicitation pause is introduced ($12.50 is well under refund-
+// approval's own $75 ask_user threshold).
+//
+// The chain's own narrative reply never proves the award specifically
+// happened -- same limitation Stage 5's own comment documents:
+// extractToolCallSteps only ever surfaces support-triage's OWN immediate
+// tool calls, several A2A hops short of refund-approval's. So this also
+// calls get_loyalty_balance directly, before and after, as unambiguous
+// structured proof -- the same real cross-cluster route real agents use,
+// with the real customer identity.
+const MULTICLUSTER_DEMO_CUSTOMER_ID = 'CUST-100'
+const MULTICLUSTER_DEMO_MESSAGE =
+  'Process a return for order ORD-1002: USB-C Charging Cable, purchased for $12.50 ' +
+  'on 2026-07-15, delivered by FastShip (tracking FS100200), for customer CUST-100. ' +
+  'Please process the full refund.'
+
+app.get('/api/stage10/balance', async (_req, res) => {
+  if (!currentCustomerToken) {
+    res.status(401).json({ error: 'not logged in — call /api/stage2/login first' })
+    return
+  }
+  try {
+    const result = await callTool(
+      config.loyaltyMcpUrl,
+      'get_loyalty_balance',
+      { customer_id: MULTICLUSTER_DEMO_CUSTOMER_ID },
+      currentCustomerToken,
+    )
+    res.json({ result })
+  } catch (err) {
+    res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
+  }
+})
+
+app.post('/api/stage10/process-return', async (_req, res) => {
+  if (!currentCustomerToken) {
+    res.status(401).json({ error: 'not logged in — call /api/stage2/login first' })
+    return
+  }
+  try {
+    const balanceBefore = await callTool(
+      config.loyaltyMcpUrl,
+      'get_loyalty_balance',
+      { customer_id: MULTICLUSTER_DEMO_CUSTOMER_ID },
+      currentCustomerToken,
+    )
+    const result = await sendMessage(
+      config.supportTriageUrl,
+      MULTICLUSTER_DEMO_MESSAGE,
+      currentCustomerToken,
+    )
+    const balanceAfter = await callTool(
+      config.loyaltyMcpUrl,
+      'get_loyalty_balance',
+      { customer_id: MULTICLUSTER_DEMO_CUSTOMER_ID },
+      currentCustomerToken,
+    )
+    res.json({
+      replyText: result.replyText,
+      steps: extractToolCallSteps(result.raw),
+      balanceBefore,
+      balanceAfter,
+    })
+  } catch (err) {
+    res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
+  }
 })
 
 // Stage 6 (budget control): headers worth surfacing to the UI from a real

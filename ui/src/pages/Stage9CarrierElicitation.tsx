@@ -33,7 +33,7 @@ interface LinkResult {
 type Phase = 'idle' | 'elicitation-required' | 'consenting' | 'linked'
 
 /**
- * Stage9CarrierElicitation is the guided tour's final stop: agentgateway's own
+ * Stage9CarrierElicitation is the guided tour's ninth stop: agentgateway's own
  * `entElicitation` mechanism, not kagent's `ask_user` (Stage 4) and not the RFC 8693
  * exchange (Stage 2). The first time this customer needs a carrier pickup scheduled,
  * carrier-mcp's linkCarrierAccount call is gated by agentgateway before it ever reaches
@@ -43,7 +43,7 @@ type Phase = 'idle' | 'elicitation-required' | 'consenting' | 'linked'
  * token; the retried call only succeeds because that token now exists. See
  * agentic-field-kit's Phase 9 plan doc for the live-verified mechanism this wraps.
  */
-export function Stage9CarrierElicitation({ onBack }: StageProps) {
+export function Stage9CarrierElicitation({ onNext, onBack }: StageProps) {
   const [flowExpanded, setFlowExpanded] = useState(false)
   const [phase, setPhase] = useState<Phase>('idle')
   const [elicitation, setElicitation] = useState<PendingElicitation | null>(null)
@@ -248,7 +248,7 @@ export function Stage9CarrierElicitation({ onBack }: StageProps) {
         </p>
       )}
 
-      <StageFooterNav onBack={onBack} />
+      <StageFooterNav onBack={onBack} onNext={onNext} nextLabel="Next: Multicluster" />
     </div>
   )
 }
