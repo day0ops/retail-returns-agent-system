@@ -81,10 +81,11 @@ func main() {
 			"use the fraud-scoring tools to assess its risk and report the " +
 			"score and risk level. Once assessed, delegate to the refund_approval " +
 			"agent to conclude the return chain. Your request to refund_approval MUST " +
-			"state the order's exact dollar amount and order ID exactly as you received " +
-			"them -- never paraphrase, round, or omit them, since refund_approval needs " +
-			"the exact figure to decide whether to ask the customer a follow-up question. " +
-			"Summarize the final outcome.",
+			"state the order's exact dollar amount, order ID, and customer ID exactly as " +
+			"you received them -- never paraphrase, round, or omit them, since " +
+			"refund_approval needs the exact figure to decide whether to ask the customer " +
+			"a follow-up question, and needs the customer ID to look up their payment " +
+			"method and loyalty account. Summarize the final outcome.",
 		Model:    llmModel,
 		Toolsets: toolsets,
 		Tools:    []adktool.Tool{refundApprovalTool},
