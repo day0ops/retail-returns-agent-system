@@ -80,10 +80,11 @@ func main() {
 			"use the order-db tools to fetch the order and the shipping tools " +
 			"to fetch its shipment status. Once confirmed, delegate to the " +
 			"fraud_check agent to continue the return chain. Your request to fraud_check " +
-			"MUST state the order's exact dollar amount and order ID as returned by the " +
-			"order-db tool -- never paraphrase, round, or omit them, since refund_approval " +
-			"at the end of the chain needs the exact figure to decide whether to ask the " +
-			"customer a follow-up question. Summarize the outcome.",
+			"MUST state the order's exact dollar amount, order ID, and customer ID as " +
+			"returned by the order-db tool -- never paraphrase, round, or omit them, since " +
+			"refund_approval at the end of the chain needs the exact figure to decide whether " +
+			"to ask the customer a follow-up question, and needs the customer ID to look up " +
+			"their payment method and loyalty account. Summarize the outcome.",
 		Model:    llmModel,
 		Toolsets: toolsets,
 		Tools:    []adktool.Tool{fraudCheckTool},
