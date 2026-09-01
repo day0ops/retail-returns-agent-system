@@ -59,11 +59,16 @@ func main() {
 	// Final hop of the A2A chain: hand off to refund_approval once risk is
 	// scored. propagateToken: true forwards the customer's JWT on this
 	// outbound A2A call the same way it's forwarded to the MCP call above.
+	// isolateSessions: true -- see support-triage/main.go's order_lookup tool for
+	// why. This was the hop where the shared-session bug actually surfaced live:
+	// refund_approval's own accumulated history (10+ prior refunds for unrelated
+	// requests, all in one "conversation") made its LLM treat a fresh return as
+	// already handled, silently skipping the loyalty-points award every time.
 	refundApprovalTool, err := adktools.NewKAgentRemoteA2ATool(
 		"refund_approval",
 		"Delegates payment method lookup and refund processing to the refund-approval agent",
 		envOr("REFUND_APPROVAL_AGENT_URL", "http://localhost:8083"),
-		nil, nil, true, false,
+		nil, nil, true, true,
 	)
 	if err != nil {
 		log.Fatalf("Failed to create refund_approval A2A tool: %v", err)
