@@ -55,3 +55,24 @@ func TestAwardPoints(t *testing.T) {
 		t.Errorf("awardPoints(%q, 50) = nil error; want error for unknown customer", "CUST-9999")
 	}
 }
+
+func TestPointsForRefund(t *testing.T) {
+	tests := []struct {
+		name         string
+		refundAmount float64
+		want         int
+	}{
+		{name: "below floor, 10% rounds under 10", refundAmount: 12.50, want: 10},
+		{name: "at floor exactly", refundAmount: 100, want: 10},
+		{name: "above floor", refundAmount: 200, want: 20},
+		{name: "rounds to nearest whole point", refundAmount: 649.99, want: 65},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := pointsForRefund(tt.refundAmount); got != tt.want {
+				t.Errorf("pointsForRefund(%v) = %d; want %d", tt.refundAmount, got, tt.want)
+			}
+		})
+	}
+}

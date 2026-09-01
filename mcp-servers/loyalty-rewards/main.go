@@ -37,11 +37,14 @@ func getLoyaltyBalanceTool(_ context.Context, _ *mcp.CallToolRequest, in GetLoya
 	return nil, GetLoyaltyBalanceOutput{Account: account}, nil
 }
 
-// AwardPointsInput is the input schema for the award_points tool.
+// AwardPointsInput is the input schema for the award_points tool. Takes the
+// refund amount rather than a pre-computed point value -- the 10%/minimum-10
+// conversion is deterministic arithmetic, done here (see pointsForRefund),
+// not left to the calling LLM to get right.
 type AwardPointsInput struct {
-	CustomerID string `json:"customer_id" jsonschema:"the customer to award points to"`
-	Points     int    `json:"points" jsonschema:"the number of points to award, must be positive"`
-	Reason     string `json:"reason" jsonschema:"a short human-readable reason for the award, e.g. return goodwill bonus"`
+	CustomerID   string  `json:"customer_id" jsonschema:"the customer to award points to"`
+	RefundAmount float64 `json:"refund_amount" jsonschema:"the dollar amount of the refund this goodwill bonus is for; must be positive"`
+	Reason       string  `json:"reason" jsonschema:"a short human-readable reason for the award, e.g. return goodwill bonus"`
 }
 
 // AwardPointsOutput is the output schema for the award_points tool.
@@ -51,7 +54,11 @@ type AwardPointsOutput struct {
 }
 
 func awardPointsTool(_ context.Context, _ *mcp.CallToolRequest, in AwardPointsInput) (*mcp.CallToolResult, AwardPointsOutput, error) {
-	account, err := awardPoints(in.CustomerID, in.Points)
+	if in.RefundAmount <= 0 {
+		return nil, AwardPointsOutput{}, fmt.Errorf("refund_amount must be positive, got %v", in.RefundAmount)
+	}
+	points := pointsForRefund(in.RefundAmount)
+	account, err := awardPoints(in.CustomerID, points)
 	if err != nil {
 		return nil, AwardPointsOutput{}, err
 	}
@@ -59,7 +66,7 @@ func awardPointsTool(_ context.Context, _ *mcp.CallToolRequest, in AwardPointsIn
 		Account: account,
 		Message: fmt.Sprintf(
 			"Awarded %d loyalty points to %s (%s). New balance: %d points.",
-			in.Points, in.CustomerID, in.Reason, account.Points,
+			points, in.CustomerID, in.Reason, account.Points,
 		),
 	}, nil
 }
@@ -74,7 +81,7 @@ func main() {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "award_points",
-		Description: "Award loyalty points to a customer, e.g. a goodwill bonus on a processed return",
+		Description: "Award a loyalty goodwill bonus to a customer for a processed return. Give the refund's dollar amount, not a point value -- the point award (10% of the amount, minimum 10) is computed here.",
 	}, awardPointsTool)
 
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
