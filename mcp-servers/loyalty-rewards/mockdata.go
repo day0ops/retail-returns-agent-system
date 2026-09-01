@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"math"
+)
 
 // LoyaltyAccount is a customer's on-file loyalty program status.
 type LoyaltyAccount struct {
@@ -42,6 +45,21 @@ func getLoyaltyBalance(customerID string) (LoyaltyAccount, error) {
 		}
 	}
 	return LoyaltyAccount{}, &ErrLoyaltyAccountNotFound{CustomerID: customerID}
+}
+
+// pointsForRefund computes the goodwill-bonus points for a processed return:
+// 10% of the refund amount, rounded to the nearest whole point, with a floor
+// of 10. Computed here rather than left to the calling LLM -- live-tested,
+// an LLM asked to apply "10%, rounded, minimum 10" in one step reliably
+// computes the percentage and rounding correctly but drops the minimum
+// clause on small amounts (e.g. $12.50 -> 1 point instead of the floor of
+// 10). This is pure arithmetic; there's no reason to trust it to a model.
+func pointsForRefund(refundAmount float64) int {
+	points := int(math.Round(refundAmount * 0.10))
+	if points < 10 {
+		return 10
+	}
+	return points
 }
 
 // awardPoints adds points to customerID's balance and returns the updated

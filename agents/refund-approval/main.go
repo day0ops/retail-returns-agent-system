@@ -93,10 +93,11 @@ func main() {
 			"yourself. Below $75, call refund_payment directly with a cash refund, no " +
 			"question needed. After the refund itself is settled, ALWAYS award a loyalty " +
 			"goodwill bonus regardless of which refund method was chosen: call " +
-			"get_loyalty_balance for the customer, then award_points with 10% of the " +
-			"refund amount (rounded to the nearest whole point, minimum 10) and reason " +
-			"\"return goodwill bonus\". State a clear final outcome for the customer: " +
-			"approved/denied, amount, refund method, and the new loyalty points balance.",
+			"get_loyalty_balance for the customer, then award_points with the refund " +
+			"amount (not a point value -- award_points computes the point award itself) " +
+			"and reason \"return goodwill bonus\". State a clear final outcome for the " +
+			"customer: approved/denied, amount, refund method, and the new loyalty " +
+			"points balance.",
 		Model:    llmModel,
 		Toolsets: toolsets,
 		Tools:    []adktool.Tool{askUserTool},
