@@ -7,6 +7,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"time"
 
 	a2atype "github.com/a2aproject/a2a-go/v2/a2a"
 	"github.com/go-logr/logr"
@@ -29,6 +30,19 @@ func main() {
 	defer func() { _ = zapLogger.Sync() }()
 	logger := zapr.NewLogger(zapLogger)
 	ctx := logr.NewContext(context.Background(), logger)
+
+	telemetryProviders, err := setupTelemetry(ctx, "order-lookup")
+	if err != nil {
+		logger.Error(err, "telemetry setup failed; continuing without tracing")
+	} else if telemetryProviders != nil {
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := telemetryProviders.Shutdown(shutdownCtx); err != nil {
+				logger.Error(err, "telemetry shutdown failed")
+			}
+		}()
+	}
 
 	// LLM calls go through the hub agentgateway's OpenAI-compatible route
 	// (matching finflow's LLM_BASE_URL convention: <gateway>/openai/v1) rather
