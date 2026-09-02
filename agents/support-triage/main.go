@@ -17,6 +17,7 @@ import (
 	"github.com/kagent-dev/kagent/go/adk/pkg/app"
 	adkmcp "github.com/kagent-dev/kagent/go/adk/pkg/mcp"
 	"github.com/kagent-dev/kagent/go/adk/pkg/models"
+	kagenttelemetry "github.com/kagent-dev/kagent/go/adk/pkg/telemetry"
 	adktools "github.com/kagent-dev/kagent/go/adk/pkg/tools"
 	"github.com/kagent-dev/kagent/go/api/adk"
 	"go.uber.org/zap"
@@ -32,14 +33,14 @@ func main() {
 	logger := zapr.NewLogger(zapLogger)
 	ctx := logr.NewContext(context.Background(), logger)
 
-	telemetryProviders, err := setupTelemetry(ctx, "support-triage")
+	shutdownTelemetry, telemetryEnabled, err := kagenttelemetry.Init(ctx, "support-triage", envOr("KAGENT_NAMESPACE", "kagent"))
 	if err != nil {
 		logger.Error(err, "telemetry setup failed; continuing without tracing")
-	} else if telemetryProviders != nil {
+	} else if telemetryEnabled {
 		defer func() {
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			if err := telemetryProviders.Shutdown(shutdownCtx); err != nil {
+			if err := shutdownTelemetry(shutdownCtx); err != nil {
 				logger.Error(err, "telemetry shutdown failed")
 			}
 		}()
