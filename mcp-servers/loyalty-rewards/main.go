@@ -1,10 +1,7 @@
-// Command loyalty-rewards is a mock MCP server exposing two tools over the
-// customer data in mockdata.go: get_loyalty_balance and award_points. It has
-// no real loyalty platform integration behind it -- this phase of the demo
-// only needs the wire protocol to work. Deployed only on the west cluster
-// (Phase 10, multicluster) and cataloged into east's AgentRegistry as a
-// remote server, to prove a real agent (refund-approval) can call a tool
-// that lives on a completely different physical cluster, transparently.
+// Command loyalty-rewards is a mock MCP server exposing get_loyalty_balance
+// and award_points. West-cluster only, cataloged into east's AgentRegistry as
+// a remote server so refund-approval can call a tool on a different physical
+// cluster (Phase 10, multicluster).
 package main
 
 import (
@@ -19,12 +16,10 @@ import (
 
 const serverName = "loyalty-rewards"
 
-// GetLoyaltyBalanceInput is the input schema for the get_loyalty_balance tool.
 type GetLoyaltyBalanceInput struct {
 	CustomerID string `json:"customer_id" jsonschema:"the customer to look up the loyalty balance for"`
 }
 
-// GetLoyaltyBalanceOutput is the output schema for the get_loyalty_balance tool.
 type GetLoyaltyBalanceOutput struct {
 	Account LoyaltyAccount `json:"account" jsonschema:"the customer's loyalty account"`
 }
@@ -37,17 +32,15 @@ func getLoyaltyBalanceTool(_ context.Context, _ *mcp.CallToolRequest, in GetLoya
 	return nil, GetLoyaltyBalanceOutput{Account: account}, nil
 }
 
-// AwardPointsInput is the input schema for the award_points tool. Takes the
-// refund amount rather than a pre-computed point value -- the 10%/minimum-10
-// conversion is deterministic arithmetic, done here (see pointsForRefund),
-// not left to the calling LLM to get right.
+// AwardPointsInput takes the refund amount, not a point value: the
+// 10%/minimum-10 conversion is done deterministically in pointsForRefund, not
+// by the calling LLM.
 type AwardPointsInput struct {
 	CustomerID   string  `json:"customer_id" jsonschema:"the customer to award points to"`
 	RefundAmount float64 `json:"refund_amount" jsonschema:"the dollar amount of the refund this goodwill bonus is for; must be positive"`
 	Reason       string  `json:"reason" jsonschema:"a short human-readable reason for the award, e.g. return goodwill bonus"`
 }
 
-// AwardPointsOutput is the output schema for the award_points tool.
 type AwardPointsOutput struct {
 	Account LoyaltyAccount `json:"account" jsonschema:"the customer's updated loyalty account"`
 	Message string         `json:"message" jsonschema:"a human-readable confirmation"`

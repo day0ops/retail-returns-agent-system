@@ -10,9 +10,7 @@ type Shipment struct {
 	Status         string `json:"status" jsonschema:"the shipment status, e.g. in_transit, delivered"`
 }
 
-// mockShipments is the hardcoded seed data for this demo. There is no real
-// carrier integration behind this; it exists only to give the guided-tour
-// agents something real to look up.
+// mockShipments is the demo seed data; there is no real carrier integration behind it.
 var mockShipments = []Shipment{
 	{OrderID: "ORD-1001", Carrier: "FastShip", TrackingNumber: "FS100100", Status: "delivered"},
 	{OrderID: "ORD-1002", Carrier: "FastShip", TrackingNumber: "FS100200", Status: "delivered"},
@@ -23,8 +21,7 @@ var mockShipments = []Shipment{
 	{OrderID: "ORD-1009", Carrier: "FastShip", TrackingNumber: "FS100900", Status: "delivered"},
 }
 
-// ErrShipmentNotFound is returned by getShipmentStatus when the given order
-// ID has no associated shipment.
+// ErrShipmentNotFound means the order ID has no associated shipment.
 type ErrShipmentNotFound struct {
 	OrderID string
 }
@@ -33,8 +30,7 @@ func (e *ErrShipmentNotFound) Error() string {
 	return fmt.Sprintf("no shipment found for order %q", e.OrderID)
 }
 
-// getShipmentStatus returns the shipment record for orderID, or
-// ErrShipmentNotFound if none exists.
+// getShipmentStatus returns the shipment for orderID, or ErrShipmentNotFound.
 func getShipmentStatus(orderID string) (Shipment, error) {
 	for _, s := range mockShipments {
 		if s.OrderID == orderID {

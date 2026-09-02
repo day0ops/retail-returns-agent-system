@@ -1,18 +1,13 @@
-// Command stage-policy-controller is a small internal service (not
-// customer-facing -- only reachable from the guided-tour UI's own BFF over
-// cluster-internal networking) that applies/removes a fixed, named set of
-// EnterpriseAgentgatewayPolicy resources on demand. It exists so the guided
-// tour can be "clickops": a presenter's "Apply policy" / "Remove policy"
-// button controls whether a stage's backend policy actually exists in the
-// cluster, instead of every policy being pre-provisioned as part of infra
-// setup (agentic-field-kit's usecase deploy) before the tour ever starts --
-// which meant an earlier stage's own demo could be silently affected by a
-// later stage's policy despite never having visited that stage yet.
+// Command stage-policy-controller is an internal service (reachable only from
+// the guided-tour BFF over cluster-internal networking) that applies/removes a
+// fixed, named set of EnterpriseAgentgatewayPolicy resources on demand, letting
+// the guided tour toggle a stage's backend policy via "Apply"/"Remove" buttons.
+// Pre-provisioning every policy up front instead let a later stage's policy
+// silently affect an earlier stage before it was ever visited.
 //
-// Deliberately narrow: this service's own RBAC (see agentic-field-kit's
-// stage-policy-rbac feature) is scoped by resourceNames to just the specific
-// objects it's allowed to create/mutate -- it cannot touch arbitrary cluster
-// resources, even though it runs with real Kubernetes API credentials.
+// Its RBAC (agentic-field-kit's stage-policy-rbac feature) is scoped by
+// resourceNames to just the objects it may create/mutate, so it cannot touch
+// arbitrary cluster resources despite holding real Kubernetes API credentials.
 package main
 
 import (
@@ -44,9 +39,8 @@ var (
 	}
 )
 
-// viewRef points at one already-provisioned object a policy view shows --
-// read-only, never created/mutated by this service (see agentic-field-kit's
-// readOnlyRefs, which is what grants the RBAC these Gets rely on).
+// viewRef points at one already-provisioned object a policy view shows: read-only,
+// never mutated here (RBAC for these Gets comes from agentic-field-kit's readOnlyRefs).
 type viewRef struct {
 	gvr       schema.GroupVersionResource
 	kind      string
@@ -54,11 +48,10 @@ type viewRef struct {
 	namespace string
 }
 
-// policyViews are read-only spec views over policy objects this service
-// doesn't manage (they're pre-provisioned by agentic-field-kit's usecase
-// deploy, not clickops-toggled) -- unlike `stages`, there's no apply/remove
-// here, just "show what's live". A view can span more than one object (e.g.
-// budget's cap + its separate enforcement policy).
+// policyViews are read-only views over pre-provisioned policy objects this
+// service doesn't manage: unlike stages there's no apply/remove, just "show
+// what's live". A view can span multiple objects (e.g. budget's cap plus its
+// separate enforcement policy).
 var policyViews = map[string][]viewRef{
 	"budget": {
 		{gvr: budgetGVR, kind: "EnterpriseAgentgatewayBudget", name: "retail-returns-customer-budgets", namespace: "agentgateway-proxy"},
@@ -69,9 +62,8 @@ var policyViews = map[string][]viewRef{
 	},
 }
 
-// One entry per clickops-controlled stage. Only "tool-policy" exists today
-// (Stage 4's pilot) -- adding a stage means adding an entry here, not a new
-// service or API shape.
+// One entry per clickops-controlled stage; adding a stage means a new entry
+// here, not a new service or API shape.
 var stages = map[string]stageDef{
 	"tool-policy": {
 		policyName:      "retail-returns-refund-identity-deny",
@@ -122,10 +114,9 @@ func (s stageDef) buildPolicy(backendName string) *unstructured.Unstructured {
 }
 
 // discoverBackendName finds the live EnterpriseAgentgatewayBackend AgentRegistry
-// created for this MCP server -- the same label-selector pattern agentic-field-kit's
-// own JS features use (backend names are hash-suffixed and not knowable ahead of
-// time). Filters on ownerKind=Deployment since AgentRegistry also creates a second,
-// MCPServer-owned Backend per server at a different, unrelated path.
+// created for this MCP server by label selector, since backend names are
+// hash-suffixed and not knowable ahead of time. Filters ownerKind=Deployment
+// because AgentRegistry also creates a second, MCPServer-owned Backend per server.
 func discoverBackendName(ctx context.Context, client dynamic.Interface, s stageDef) (string, error) {
 	list, err := client.Resource(backendGVR).Namespace(s.policyNamespace).List(ctx, metav1.ListOptions{
 		LabelSelector: "agentregistry.solo.io/ownerName=" + s.mcpServerName + ",agentregistry.solo.io/ownerKind=Deployment",
@@ -171,8 +162,7 @@ func (srv *server) handleApply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Server-side apply: idempotent, and avoids the resourceVersion/
-	// last-applied-configuration conflicts a naive get-then-create-or-update
-	// (or a stale manually-restored object) can hit.
+	// last-applied-configuration conflicts a naive get-then-create-or-update can hit.
 	_, err = srv.client.Resource(policyGVR).Namespace(s.policyNamespace).Patch(
 		ctx, s.policyName, types.ApplyPatchType, data,
 		metav1.PatchOptions{FieldManager: "stage-policy-controller", Force: boolPtr(true)},
@@ -214,11 +204,9 @@ func (srv *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"applied": true})
 }
 
-// handleSpec returns spec: down for this stage's policy -- the actual live
-// object's spec if currently applied, or the exact spec applying it would
-// create otherwise (same discoverBackendName lookup handleApply itself
-// uses), so a presenter can show what the policy really contains before
-// ever clicking "Apply".
+// handleSpec returns this stage's policy spec: the live object's spec if applied,
+// otherwise the spec applying would create (same discoverBackendName lookup as
+// handleApply), so a presenter can preview it before clicking "Apply".
 func (srv *server) handleSpec(w http.ResponseWriter, r *http.Request) {
 	s, ok := srv.lookupStage(w, r)
 	if !ok {
@@ -243,11 +231,9 @@ func (srv *server) handleSpec(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"applied": false, "spec": policy.Object["spec"]})
 }
 
-// handlePolicyView returns spec: down for every object in a named policy
-// view -- these objects are pre-provisioned (not clickops-managed), so
-// unlike handleSpec there's no "what would applying create" fallback: if an
-// object isn't found, that's reported per-object rather than failing the
-// whole request.
+// handlePolicyView returns the spec of every object in a named policy view.
+// These are pre-provisioned, so unlike handleSpec there's no "would create"
+// fallback: a missing object is reported per-object, not failed wholesale.
 func (srv *server) handlePolicyView(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	refs, ok := policyViews[name]

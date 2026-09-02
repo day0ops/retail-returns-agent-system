@@ -9,8 +9,8 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// jwtWithPayload builds a syntactically-valid (unsigned) JWT string wrapping
-// the given base64url-encoded-free JSON payload, for testing decodeJWTClaims.
+// jwtWithPayload builds a syntactically valid unsigned JWT wrapping the given raw
+// JSON payload, for testing decodeJWTClaims.
 func jwtWithPayload(t *testing.T, payloadJSON string) string {
 	t.Helper()
 	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"none","typ":"JWT"}`))

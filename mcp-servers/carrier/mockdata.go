@@ -2,10 +2,8 @@ package main
 
 import "fmt"
 
-// carrierByOrder maps an order to the carrier it ships with -- the same
-// order/carrier pairings shipping-mcp's own mock data uses, kept as an
-// independent copy here rather than a shared import: this is a genuinely
-// separate service, not a shared library between the two.
+// carrierByOrder maps an order to its carrier. Mirrors shipping-mcp's pairings but
+// keeps an independent copy on purpose: this is a separate service, not a shared library.
 var carrierByOrder = map[string]string{
 	"ORD-1001": "FastShip",
 	"ORD-1002": "FastShip",
@@ -16,8 +14,7 @@ var carrierByOrder = map[string]string{
 	"ORD-1009": "FastShip",
 }
 
-// ErrOrderNotFound is returned by carrierForOrder when the given order ID has
-// no associated carrier.
+// ErrOrderNotFound means the order ID has no associated carrier.
 type ErrOrderNotFound struct {
 	OrderID string
 }
@@ -26,8 +23,7 @@ func (e *ErrOrderNotFound) Error() string {
 	return fmt.Sprintf("no order found for %q", e.OrderID)
 }
 
-// carrierForOrder returns the carrier an order ships with, or
-// ErrOrderNotFound if the order is unknown.
+// carrierForOrder returns the order's carrier, or ErrOrderNotFound if unknown.
 func carrierForOrder(orderID string) (string, error) {
 	carrier, ok := carrierByOrder[orderID]
 	if !ok {

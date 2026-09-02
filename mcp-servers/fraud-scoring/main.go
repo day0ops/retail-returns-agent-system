@@ -1,6 +1,5 @@
-// Command fraud-scoring is a mock MCP server exposing one tool over the risk
-// data in mockdata.go: score_transaction. It has no real fraud model behind
-// it -- this phase of the demo only needs the wire protocol to work.
+// Command fraud-scoring is a mock MCP server exposing score_transaction. No real
+// fraud model behind it.
 package main
 
 import (
@@ -14,12 +13,10 @@ import (
 
 const serverName = "fraud-scoring"
 
-// ScoreTransactionInput is the input schema for the score_transaction tool.
 type ScoreTransactionInput struct {
 	OrderID string `json:"order_id" jsonschema:"the order to score"`
 }
 
-// ScoreTransactionOutput is the output schema for the score_transaction tool.
 type ScoreTransactionOutput struct {
 	Risk RiskScore `json:"risk" jsonschema:"the order's fraud risk assessment"`
 }

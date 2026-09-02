@@ -1,9 +1,7 @@
-// Command pii-guardrail is an ExtMcp policy server (agentgateway's
-// mcp.guardrails hook, modeled on Envoy ext_authz at the MCP method layer).
-// It masks PII (email addresses, phone numbers) out of MCP tool results on
-// the response path -- Stage 5 of the guided tour. Tool-call gating
-// (CheckRequest) always passes; deny-by-tool-name is a separate concern
-// (Stage 4/mcp.authorization), not this stage's job.
+// Command pii-guardrail is an ExtMcp policy server (agentgateway's mcp.guardrails
+// hook, like Envoy ext_authz at the MCP method layer). It masks PII (emails, phone
+// numbers) out of tool results on the response path (Stage 5). CheckRequest always
+// passes; deny-by-tool-name is Stage 4's job (mcp.authorization), not this one's.
 package main
 
 import (

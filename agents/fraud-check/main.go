@@ -1,5 +1,4 @@
-// Command fraud-check is a kagent BYO agent, built on kagent's Go ADK
-// (github.com/kagent-dev/kagent/go/adk), that scores an order's fraud risk
+// Command fraud-check is a kagent BYO agent that scores an order's fraud risk
 // via the fraud-scoring MCP server.
 package main
 
@@ -45,40 +44,32 @@ func main() {
 		}()
 	}
 
-	// LLM calls go through the hub agentgateway's OpenAI-compatible route
-	// (matching finflow's LLM_BASE_URL convention: <gateway>/openai/v1) rather
-	// than hitting OpenAI directly, for cost tracking and telemetry. Empty
-	// LLM_BASE_URL falls back to the OpenAI SDK's default (openai.com), which
-	// is what local dev without a deployed gateway uses.
+	// LLM calls route through the hub agentgateway's OpenAI-compatible path
+	// (<gateway>/openai/v1) for cost tracking and telemetry. Empty LLM_BASE_URL
+	// falls back to the OpenAI SDK default (openai.com) for local dev.
 	llmModel, err := models.NewOpenAIModelWithLogger(&models.OpenAIConfig{
 		Model:   envOr("MODEL_NAME", "gpt-4o-mini"),
 		BaseUrl: os.Getenv("LLM_BASE_URL"),
-		// Reasoning-class models (e.g. gpt-5.6) reject function tools over
-		// /v1/chat/completions unless reasoning_effort is explicitly "none";
-		// standard models neither need nor necessarily accept the param, so it
-		// must stay unset (nil) unless a reasoning model is actually configured
-		// (see MODEL_REASONING_EFFORT in the app manifest).
+		// Reasoning models (e.g. gpt-5.6) reject function tools over
+		// /v1/chat/completions unless reasoning_effort is "none"; standard models
+		// may reject the param, so it stays nil unless MODEL_REASONING_EFFORT is set.
 		ReasoningEffort: envPtr("MODEL_REASONING_EFFORT"),
 	}, logger)
 	if err != nil {
 		log.Fatalf("Failed to create LLM model: %v", err)
 	}
 
-	// Wire fraud-scoring as a tool source. FRAUD_SCORING_URL points at the k8s
-	// Service once deployed (a later phase's usecase spec), or localhost:8080
+	// FRAUD_SCORING_URL points at the k8s Service once deployed, or localhost:8080
 	// for local dev.
 	toolsets := adkmcp.CreateToolsets(ctx, []adk.HttpMcpServerConfig{
 		{Params: adk.StreamableHTTPConnectionParams{Url: envOr("FRAUD_SCORING_URL", "http://localhost:8080/mcp")}},
 	}, nil /* no SSE servers */, nil /* no stdio servers */, true /* propagateToken: forward the customer JWT to MCP calls */, nil /* headerProvider */)
 
-	// Final hop of the A2A chain: hand off to refund_approval once risk is
-	// scored. propagateToken: true forwards the customer's JWT on this
-	// outbound A2A call the same way it's forwarded to the MCP call above.
-	// isolateSessions: true -- see support-triage/main.go's order_lookup tool for
-	// why. This was the hop where the shared-session bug actually surfaced live:
-	// refund_approval's own accumulated history (10+ prior refunds for unrelated
-	// requests, all in one "conversation") made its LLM treat a fresh return as
-	// already handled, silently skipping the loyalty-points award every time.
+	// Hands off to refund_approval once risk is scored. propagateToken forwards
+	// the customer JWT; isolateSessions (see support-triage order_lookup) prevents
+	// the shared-session bug that surfaced live here: refund_approval's accumulated
+	// history (10+ prior refunds in one "conversation") made its LLM treat a fresh
+	// return as already handled, silently skipping the loyalty-points award.
 	refundApprovalTool, err := adktools.NewKAgentRemoteA2ATool(
 		"refund_approval",
 		"Delegates payment method lookup and refund processing to the refund-approval agent",
@@ -158,9 +149,9 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
-// envPtr returns a pointer to the env var's value, or nil if unset -- distinct
-// from envOr's fallback-to-default since an unset ReasoningEffort must stay
-// nil (omitted from the request) rather than fall back to some string value.
+// envPtr returns a pointer to the env var's value, or nil if unset. Unlike
+// envOr, an unset value stays nil (omitted from the request) rather than
+// falling back to a default.
 func envPtr(key string) *string {
 	if v := os.Getenv(key); v != "" {
 		return &v

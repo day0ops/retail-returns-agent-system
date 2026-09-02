@@ -1,6 +1,5 @@
-// Command order-db is a mock MCP server exposing two tools over the order
-// data in mockdata.go: list_orders and get_order. It has no real database
-// behind it -- this phase of the demo only needs the wire protocol to work.
+// Command order-db is a mock MCP server exposing list_orders and get_order over
+// the mock data in mockdata.go, plus a whoami token-exchange diagnostic.
 package main
 
 import (
@@ -18,22 +17,18 @@ import (
 
 const serverName = "order-db"
 
-// ListOrdersInput is the input schema for the list_orders tool.
 type ListOrdersInput struct {
 	CustomerID string `json:"customer_id" jsonschema:"the customer to list orders for"`
 }
 
-// ListOrdersOutput is the output schema for the list_orders tool.
 type ListOrdersOutput struct {
 	Orders []Order `json:"orders" jsonschema:"the customer's orders"`
 }
 
-// GetOrderInput is the input schema for the get_order tool.
 type GetOrderInput struct {
 	OrderID string `json:"order_id" jsonschema:"the order to look up"`
 }
 
-// GetOrderOutput is the output schema for the get_order tool.
 type GetOrderOutput struct {
 	Order Order `json:"order" jsonschema:"the matching order"`
 }
@@ -50,18 +45,15 @@ func getOrderTool(_ context.Context, _ *mcp.CallToolRequest, in GetOrderInput) (
 	return nil, GetOrderOutput{Order: order}, nil
 }
 
-// WhoamiOutput is the output schema for the whoami diagnostic tool.
 type WhoamiOutput struct {
 	AuthorizationPresent bool           `json:"authorization_present" jsonschema:"whether an Authorization header was received on this request"`
 	Claims               map[string]any `json:"claims,omitempty" jsonschema:"decoded (unverified) JWT claims from the received token, if present and well-formed"`
 }
 
-// whoamiTool is a Stage-2-only diagnostic: it decodes and returns the claims of
-// whatever bearer token this server actually received on the wire. It exists so
-// the guided-tour UI can show, side by side, the customer's original token vs.
-// what order-db received after agentgateway's token exchange -- proving the
-// exchange actually happened rather than just being configured. No signature
-// verification is performed; this is a display aid, not an auth check.
+// whoamiTool decodes and returns the claims of the bearer token this server
+// actually received, so the guided-tour UI can prove agentgateway's token
+// exchange happened (Stage 2). No signature verification; display aid, not an
+// auth check.
 func whoamiTool(_ context.Context, req *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, WhoamiOutput, error) {
 	if req.Extra == nil || req.Extra.Header == nil {
 		return nil, WhoamiOutput{}, nil
@@ -72,15 +64,14 @@ func whoamiTool(_ context.Context, req *mcp.CallToolRequest, _ struct{}) (*mcp.C
 	}
 	claims, err := decodeJWTClaims(authHeader)
 	if err != nil {
-		// Malformed/non-JWT token: still report that something arrived, just no claims.
+		// Malformed token: report it arrived, but with no claims.
 		return nil, WhoamiOutput{AuthorizationPresent: true}, nil
 	}
 	return nil, WhoamiOutput{AuthorizationPresent: true, Claims: claims}, nil
 }
 
-// decodeJWTClaims base64url-decodes a JWT's payload segment and parses it as
-// JSON. It does not verify the signature -- callers must not treat the result
-// as authenticated identity, only as a display value.
+// decodeJWTClaims base64url-decodes a JWT payload as JSON. It does not verify the
+// signature; the result is a display value, not authenticated identity.
 func decodeJWTClaims(authHeader string) (map[string]any, error) {
 	token := strings.TrimPrefix(authHeader, "Bearer ")
 	parts := strings.Split(token, ".")

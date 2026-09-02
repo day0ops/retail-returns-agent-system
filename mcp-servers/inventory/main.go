@@ -1,6 +1,5 @@
-// Command inventory is a mock MCP server exposing one tool over the stock
-// data in mockdata.go: check_stock. It has no real warehouse system behind
-// it -- this phase of the demo only needs the wire protocol to work.
+// Command inventory is a mock MCP server exposing check_stock. No real warehouse
+// system behind it.
 package main
 
 import (
@@ -14,12 +13,10 @@ import (
 
 const serverName = "inventory"
 
-// CheckStockInput is the input schema for the check_stock tool.
 type CheckStockInput struct {
 	Item string `json:"item" jsonschema:"the item to check stock for"`
 }
 
-// CheckStockOutput is the output schema for the check_stock tool.
 type CheckStockOutput struct {
 	Stock StockLevel `json:"stock" jsonschema:"the item's current stock level"`
 }
