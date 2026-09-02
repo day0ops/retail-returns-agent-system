@@ -35,8 +35,8 @@ func setupTelemetry(ctx context.Context, serviceName string) (*telemetry.Provide
 	if endpoint == "" {
 		return nil, nil
 	}
-	os.Unsetenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-	os.Unsetenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")
+	_ = os.Unsetenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	_ = os.Unsetenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")
 
 	grpcOpts := []otlptracegrpc.Option{otlptracegrpc.WithEndpointURL(endpoint)}
 	if os.Getenv("OTEL_EXPORTER_OTLP_TRACES_INSECURE") == "true" {
