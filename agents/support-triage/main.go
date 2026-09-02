@@ -143,6 +143,15 @@ func main() {
 			Skills: []a2atype.AgentSkill{
 				{ID: "triage-return", Name: "Triage Return", Description: "Look up an order and summarize its return eligibility"},
 			},
+			// Without an explicit absolute URL here, app.New falls back to a
+			// relative "/" interface -- fine for serving this agent's own A2A
+			// endpoint, but a peer agent that resolves this card (e.g. via its
+			// own remote A2A tool) ends up with a client pointed at the literal
+			// path "/", which fails with "unsupported protocol scheme \"\""
+			// instead of ever reaching this agent.
+			SupportedInterfaces: []*a2atype.AgentInterface{
+				a2atype.NewAgentInterface(envOr("AGENT_CARD_URL", "http://localhost:"+envOr("PORT", "8080")), a2atype.TransportProtocolJSONRPC),
+			},
 		},
 		Port:   envOr("PORT", "8080"),
 		Logger: logger,

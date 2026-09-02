@@ -146,6 +146,10 @@ func main() {
 			Skills: []a2atype.AgentSkill{
 				{ID: "approve-refund", Name: "Approve Refund", Description: "Issue a refund for an approved return"},
 			},
+			// See support-triage/main.go's AgentCard for why this is required.
+			SupportedInterfaces: []*a2atype.AgentInterface{
+				a2atype.NewAgentInterface(envOr("AGENT_CARD_URL", "http://localhost:"+envOr("PORT", "8080")), a2atype.TransportProtocolJSONRPC),
+			},
 		},
 		Port:   envOr("PORT", "8080"),
 		Logger: logger,

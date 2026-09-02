@@ -133,6 +133,10 @@ func main() {
 			Skills: []a2atype.AgentSkill{
 				{ID: "lookup-order", Name: "Lookup Order", Description: "Look up an order and its shipment status"},
 			},
+			// See support-triage/main.go's AgentCard for why this is required.
+			SupportedInterfaces: []*a2atype.AgentInterface{
+				a2atype.NewAgentInterface(envOr("AGENT_CARD_URL", "http://localhost:"+envOr("PORT", "8080")), a2atype.TransportProtocolJSONRPC),
+			},
 		},
 		Port:   envOr("PORT", "8080"),
 		Logger: logger,
