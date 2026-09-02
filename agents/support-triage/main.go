@@ -44,6 +44,20 @@ func main() {
 				logger.Error(err, "telemetry shutdown failed")
 			}
 		}()
+		// KAGENT_PRE_RESPONSE_TRACE_FLUSH's per-request flush (see the usecase spec's
+		// env block) only fires reliably for this agent's own top-level inbound
+		// requests -- confirmed live it does not fire for requests arriving as a
+		// nested A2A remote-tool call from another agent, for reasons not fully
+		// isolated in kagent's SDK. A periodic flush sidesteps that gap: proven live
+		// (via an isolated debug build) to reliably export buffered spans regardless
+		// of how the request arrived.
+		go func() {
+			ticker := time.NewTicker(3 * time.Second)
+			defer ticker.Stop()
+			for range ticker.C {
+				kagenttelemetry.ForceFlush(context.Background())
+			}
+		}()
 	}
 
 	// LLM calls go through the hub agentgateway's OpenAI-compatible route
