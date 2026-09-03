@@ -46,10 +46,15 @@ const config = {
   // and are unaffected).
   llmBaseUrl: requiredEnv('LLM_BASE_URL'),
   supportTriageUrl: requiredEnv('SUPPORT_TRIAGE_URL'),
-  // Stage 4 (progressive disclosure): before (plain, authenticated) vs.
-  // after (codeMode, unauthenticated -- see the app manifest comment)
-  // tool-schema comparison for order-db-mcp.
+  // order-db-mcp's normal, AgentRegistry-managed route (Strict JWT + token
+  // exchange, same one order-lookup itself calls). Dual purpose: the
+  // "masked" side of the PII redacted-vs-not comparison below, and the
+  // "before" side of the progressive-disclosure tool-catalog comparison.
   orderDbMcpUrl: requiredEnv('ORDER_DB_MCP_URL'),
+  // Progressive disclosure: the mcp-codemode-route feature's separate
+  // Backend+HTTPRoute for order-db-mcp with entMcp.codeMode enabled --
+  // collapses the same server's tool catalog into one code-execution
+  // meta-tool. "after" side of the comparison below.
   orderDbCodemodeMcpUrl: requiredEnv('ORDER_DB_CODEMODE_MCP_URL'),
   // Stage 4 (tool policy): payment-mcp's normal, AgentRegistry-managed route
   // (Strict JWT + token exchange, same one refund-approval's own PAYMENT_URL
@@ -279,12 +284,13 @@ app.post('/api/stage-elicitation/answer', async (req, res) => {
   }
 })
 
-// Stage 4 (progressive disclosure): live tool-schema comparison, not
-// hardcoded text. "before" is order-db's normal MCP route
-// (authenticated, same one order-lookup itself calls); "after" is the
-// mcp-codemode-route feature's separate Backend+HTTPRoute with
-// entMcp.codeMode enabled, collapsing the same server's catalog into one
-// code-execution meta-tool.
+// Progressive disclosure: live tool-schema comparison, not hardcoded text.
+// "before" is order-db's normal MCP route (authenticated, same one
+// order-lookup itself calls); "after" is the mcp-codemode-route feature's
+// separate Backend+HTTPRoute with entMcp.codeMode enabled, collapsing the
+// same server's catalog into one code-execution meta-tool. UI labels this
+// "Show me" / "Full tool list" / "Collapsed to one instruction" -- no
+// "codeMode"/"entMcp" jargon reaches the presenter's audience.
 app.get('/api/stage-tool-policy/codemode-comparison', async (_req, res) => {
   if (!currentCustomerToken) {
     res.status(401).json({ error: 'not logged in — call /api/stage2/login first' })
