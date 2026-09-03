@@ -72,7 +72,10 @@ interface DenyCheckResponse {
  *    an earlier investigation's "doesn't work" conclusion was a
  *    test-harness artifact, not a gateway bug.
  * 2. Progressive disclosure: order-db-mcp's tool catalog collapsed into one
- *    code-execution meta-tool via entMcp.codeMode.
+ *    code-execution meta-tool via entMcp.codeMode. UI copy avoids the
+ *    "codeMode"/"entMcp" jargon entirely -- framed as "how much the AI has
+ *    to read" instead, since a presenter's audience won't know what those
+ *    terms mean.
  */
 export function Stage5ToolPolicy({ onNext, onBack }: StageProps) {
   const [comparison, setComparison] = useState<CodemodeComparison | null>(null)
@@ -176,8 +179,8 @@ export function Stage5ToolPolicy({ onNext, onBack }: StageProps) {
           <h1 className="text-2xl font-semibold">Tool policy &amp; progressive disclosure</h1>
           <p className="text-muted-foreground mt-1 max-w-md text-sm">
             Two independent gateway-level controls: a hard identity-based deny on refund_payment
-            that no agent instruction can talk around, and order-db-mcp's tool catalog collapsed
-            into a single code-execution meta-tool via entMcp.codeMode.
+            that no agent instruction can talk around, and a shorter tool list for the AI to read as
+            order-db-mcp's catalog grows.
           </p>
         </div>
         <ThemeToggle />
@@ -339,38 +342,37 @@ export function Stage5ToolPolicy({ onNext, onBack }: StageProps) {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Code2 className="size-4" /> Compare tool catalogs
+              <Code2 className="size-4" /> Progressive disclosure
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Info className="text-muted-foreground size-3.5" />
                 </TooltipTrigger>
                 <TooltipContent>
-                  entMcp.codeMode collapses order-db-mcp's individual tool schemas into a single
-                  code-execution meta-tool -- fewer tokens for the LLM to read as a real catalog
-                  grows to dozens of tools, at the cost of the model writing code instead of calling
-                  tools directly.
+                  At today's scale (2 tools) this looks modest. At real-world scale (dozens of
+                  tools), it's the difference between the AI reading one short instruction vs.
+                  dozens of full tool descriptions every time.
                 </TooltipContent>
               </Tooltip>
             </CardTitle>
             <CardDescription>
-              Live-queried from both routes, not hardcoded. At this demo's scale (2 tools) the
-              difference is modest; the mechanism matters more at real-world scale with dozens of
-              tools.
+              As a tool catalog grows to dozens of tools, agentgateway can collapse it into one
+              instruction -- "write code to call what you need" -- instead of the AI reading every
+              tool's full description up front.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <Button onClick={handleCompare} disabled={comparing} className="w-fit">
-              {comparing ? 'Comparing…' : 'Compare tool catalogs'}
+              {comparing ? 'Loading…' : 'Show me'}
             </Button>
             {comparisonError && <p className="text-destructive text-sm">{comparisonError}</p>}
             {comparison && (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <ToolList
-                  title={`Without codeMode (${comparison.before.length} tools)`}
+                  title={`Full tool list (${comparison.before.length} tools)`}
                   tools={comparison.before}
                 />
                 <ToolList
-                  title={`With codeMode (${comparison.after.length} tool)`}
+                  title={`Collapsed to one instruction (${comparison.after.length} tool)`}
                   tools={comparison.after}
                 />
               </div>
