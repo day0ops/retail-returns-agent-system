@@ -21,6 +21,7 @@ You watch an agent look up an order, check it for fraud signals, and approve a r
 
 ```
 .
+├── access-policy-test-harness
 ├── agents
 │   ├── fraud-check
 │   ├── order-lookup

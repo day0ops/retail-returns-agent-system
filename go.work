@@ -1,6 +1,7 @@
 go 1.27.0
 
 use (
+	./access-policy-test-harness
 	./agents/fraud-check
 	./agents/order-lookup
 	./agents/refund-approval

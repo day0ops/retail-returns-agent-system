@@ -37,6 +37,10 @@ mcp-servers/       mock MCP servers, one tool domain each, no real backend behin
 pii-guardrail/     agentgateway ExtMcp guardrails hook; masks PII in tool results
 stage-policy-controller/  applies/removes EnterpriseAgentgatewayPolicy CRDs on
                           demand so the UI can toggle a stage's backend policy
+access-policy-test-harness/  tiny HTTP service that calls a named MCP tool on
+                          returns-eligibility as whichever ServiceAccount its
+                          Deployment is given (Stage 11); deployed twice under
+                          existing agent ServiceAccounts, no real agent code touched
 ui/                guided-tour SPA (Stage 1-10), Vite + React + TS + shadcn/ui
 ```
 
