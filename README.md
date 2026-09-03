@@ -6,6 +6,7 @@
 
 ![build](https://github.com/day0ops/retail-returns-agent-system/actions/workflows/build-images.yml/badge.svg)
 ![go version](https://img.shields.io/badge/go-1.26-00ADD8?logo=go)
+[![License](https://img.shields.io/github/license/day0ops/retail-returns-agent-system)](LICENSE)
 
 </div>
 
@@ -19,24 +20,29 @@ You watch an agent look up an order, check it for fraud signals, and approve a r
 ## Repo layout
 
 ```
-agents/
-  support-triage/
-  order-lookup/
-  fraud-check/
-  refund-approval/
-mcp-servers/
-  order-db/
-  payment/
-  shipping/
-  inventory/
-  fraud-scoring/
-pii-guardrail/
-stage-policy-controller/
-ui/
+.
+├── agents
+│   ├── fraud-check
+│   ├── order-lookup
+│   ├── refund-approval
+│   └── support-triage
+├── images
+├── mcp-servers
+│   ├── carrier
+│   ├── fraud-scoring
+│   ├── inventory
+│   ├── loyalty-rewards
+│   ├── order-db
+│   ├── payment
+│   └── shipping
+├── pii-guardrail
+├── stage-policy-controller
+└── ui
+    ├── public
+    ├── server
+    └── src
 ```
 
 ## Learn more
 
-For the full technical architecture (why these decisions were made, the
-guided-tour stages, and the CRD mechanisms each stage relies on), see the
-design doc in the `agentic-field-kit` repo.
+For the full technical architecture (why these decisions were made, the guided-tour stages, and the CRD mechanisms each stage relies on), see the design doc in the `agentic-field-kit` repo.

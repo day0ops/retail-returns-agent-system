@@ -1,5 +1,4 @@
-// Command order-lookup is a kagent BYO agent, built on kagent's Go ADK
-// (github.com/kagent-dev/kagent/go/adk), that looks up a customer's order
+// Command order-lookup is a kagent BYO agent that looks up a customer's order
 // and its shipment status via the order-db and shipping MCP servers.
 package main
 
@@ -45,39 +44,32 @@ func main() {
 		}()
 	}
 
-	// LLM calls go through the hub agentgateway's OpenAI-compatible route
-	// (matching finflow's LLM_BASE_URL convention: <gateway>/openai/v1) rather
-	// than hitting OpenAI directly, for cost tracking and telemetry. Empty
-	// LLM_BASE_URL falls back to the OpenAI SDK's default (openai.com), which
-	// is what local dev without a deployed gateway uses.
+	// Route LLM calls through the hub agentgateway (LLM_BASE_URL=<gateway>/openai/v1)
+	// for cost tracking and telemetry; empty falls back to the OpenAI SDK default
+	// for local dev.
 	llmModel, err := models.NewOpenAIModelWithLogger(&models.OpenAIConfig{
 		Model:   envOr("MODEL_NAME", "gpt-4o-mini"),
 		BaseUrl: os.Getenv("LLM_BASE_URL"),
 		// Reasoning-class models (e.g. gpt-5.6) reject function tools over
-		// /v1/chat/completions unless reasoning_effort is explicitly "none";
-		// standard models neither need nor necessarily accept the param, so it
-		// must stay unset (nil) unless a reasoning model is actually configured
-		// (see MODEL_REASONING_EFFORT in the app manifest).
+		// /v1/chat/completions unless reasoning_effort is "none"; standard models
+		// must leave it nil. Set via MODEL_REASONING_EFFORT only for reasoning models.
 		ReasoningEffort: envPtr("MODEL_REASONING_EFFORT"),
 	}, logger)
 	if err != nil {
 		log.Fatalf("Failed to create LLM model: %v", err)
 	}
 
-	// Wire order-db and shipping as tool sources. *_URL point at k8s Service
-	// DNS once deployed (a later phase's usecase spec), or localhost for
-	// local dev.
+	// ORDER_DB_URL and SHIPPING_URL point at k8s Service DNS once deployed, or
+	// localhost for local dev.
 	toolsets := adkmcp.CreateToolsets(ctx, []adk.HttpMcpServerConfig{
 		{Params: adk.StreamableHTTPConnectionParams{Url: envOr("ORDER_DB_URL", "http://localhost:8080/mcp")}},
 		{Params: adk.StreamableHTTPConnectionParams{Url: envOr("SHIPPING_URL", "http://localhost:8081/mcp")}},
 	}, nil /* no SSE servers */, nil /* no stdio servers */, true /* propagateToken: forward the customer JWT to MCP calls */, nil /* headerProvider */)
 
-	// Next hop of the A2A chain: hand off to fraud_check once order/shipment
-	// details are confirmed. propagateToken: true forwards the customer's JWT
-	// on this outbound A2A call the same way it's forwarded to the MCP calls above.
-	// isolateSessions: true -- see support-triage/main.go's order_lookup tool for
-	// why (confirmed live: without it, this hop's sub-agent session accumulates
-	// across every unrelated request for this pod's whole lifetime).
+	// Next A2A hop, handing off to fraud_check. The two bools are propagateToken
+	// (forward the customer JWT, as with the MCP calls above) and isolateSessions;
+	// isolateSessions must be true, see support-triage/main.go's order_lookup tool
+	// for why.
 	fraudCheckTool, err := adktools.NewKAgentRemoteA2ATool(
 		"fraud_check",
 		"Delegates transaction fraud risk scoring to the fraud-check agent",
@@ -157,9 +149,8 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
-// envPtr returns a pointer to the env var's value, or nil if unset -- distinct
-// from envOr's fallback-to-default since an unset ReasoningEffort must stay
-// nil (omitted from the request) rather than fall back to some string value.
+// envPtr returns a pointer to the env var's value, or nil if unset. Unlike
+// envOr, it has no default: ReasoningEffort must stay nil (omitted) when unset.
 func envPtr(key string) *string {
 	if v := os.Getenv(key); v != "" {
 		return &v

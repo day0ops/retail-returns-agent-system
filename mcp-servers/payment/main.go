@@ -1,7 +1,5 @@
-// Command payment is a mock MCP server exposing two tools over the payment
-// data in mockdata.go: get_payment_method and refund_payment. It has no real
-// payment processor behind it -- this phase of the demo only needs the wire
-// protocol to work.
+// Command payment is a mock MCP server exposing get_payment_method and
+// refund_payment. No real payment processor behind it.
 package main
 
 import (
@@ -15,23 +13,19 @@ import (
 
 const serverName = "payment"
 
-// GetPaymentMethodInput is the input schema for the get_payment_method tool.
 type GetPaymentMethodInput struct {
 	CustomerID string `json:"customer_id" jsonschema:"the customer to look up the payment method for"`
 }
 
-// GetPaymentMethodOutput is the output schema for the get_payment_method tool.
 type GetPaymentMethodOutput struct {
 	PaymentMethod PaymentMethod `json:"payment_method" jsonschema:"the customer's payment method on file"`
 }
 
-// RefundPaymentInput is the input schema for the refund_payment tool.
 type RefundPaymentInput struct {
 	OrderID string  `json:"order_id" jsonschema:"the order to refund"`
 	Amount  float64 `json:"amount" jsonschema:"the amount to refund, in USD"`
 }
 
-// RefundPaymentOutput is the output schema for the refund_payment tool.
 type RefundPaymentOutput struct {
 	Refund RefundResult `json:"refund" jsonschema:"the refund result"`
 }

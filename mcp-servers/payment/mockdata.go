@@ -16,9 +16,7 @@ type RefundResult struct {
 	Status  string  `json:"status" jsonschema:"the refund status, e.g. refunded"`
 }
 
-// mockPaymentMethods is the hardcoded seed data for this demo. There is no
-// real payment processor behind this; it exists only to give the guided-tour
-// agents something real to look up and act on.
+// mockPaymentMethods is the demo seed data; there is no real payment processor behind it.
 var mockPaymentMethods = []PaymentMethod{
 	{CustomerID: "CUST-100", Type: "credit_card", Last4: "4242"},
 	{CustomerID: "CUST-101", Type: "paypal", Last4: "n/a"},
@@ -27,8 +25,7 @@ var mockPaymentMethods = []PaymentMethod{
 	{CustomerID: "CUST-104", Type: "debit_card", Last4: "9999"},
 }
 
-// ErrPaymentMethodNotFound is returned by getPaymentMethod when the given
-// customer ID has no payment method on file.
+// ErrPaymentMethodNotFound means the customer ID has no payment method on file.
 type ErrPaymentMethodNotFound struct {
 	CustomerID string
 }
@@ -37,8 +34,7 @@ func (e *ErrPaymentMethodNotFound) Error() string {
 	return fmt.Sprintf("no payment method on file for customer %q", e.CustomerID)
 }
 
-// getPaymentMethod returns the payment method on file for customerID, or
-// ErrPaymentMethodNotFound if none exists.
+// getPaymentMethod returns the method for customerID, or ErrPaymentMethodNotFound.
 func getPaymentMethod(customerID string) (PaymentMethod, error) {
 	for _, m := range mockPaymentMethods {
 		if m.CustomerID == customerID {
@@ -48,8 +44,8 @@ func getPaymentMethod(customerID string) (PaymentMethod, error) {
 	return PaymentMethod{}, &ErrPaymentMethodNotFound{CustomerID: customerID}
 }
 
-// refundPayment simulates issuing a refund. There is no real ledger behind
-// this; it always succeeds for a non-empty order ID and positive amount.
+// refundPayment simulates a refund: no real ledger, always succeeds for a
+// non-empty order ID and positive amount.
 func refundPayment(orderID string, amount float64) (RefundResult, error) {
 	if orderID == "" {
 		return RefundResult{}, fmt.Errorf("order_id must not be empty")

@@ -7,21 +7,18 @@ var (
 	phonePattern = regexp.MustCompile(`\b\d{3}-\d{3}-\d{4}\b`)
 )
 
-// redactText replaces email addresses and phone numbers found anywhere in s
-// with marker strings, so a redaction is visibly obvious in a live demo
-// rather than silently absent.
+// redactText replaces emails and phone numbers in s with marker strings, so a
+// redaction is visibly obvious in a live demo rather than silently absent.
 func redactText(s string) string {
 	s = emailPattern.ReplaceAllString(s, "[REDACTED_EMAIL]")
 	s = phonePattern.ReplaceAllString(s, "[REDACTED_PHONE]")
 	return s
 }
 
-// redactValue walks a JSON value (as decoded by encoding/json into
-// interface{}) and redacts every string leaf it finds, at any depth. MCP tool
-// results carry the same data twice -- once as a real nested object
-// (structuredContent) and once as a JSON-encoded string (content[].text) --
-// redacting every string leaf handles both without needing to special-case
-// either shape or re-parse the inner JSON string.
+// redactValue walks a decoded JSON value and redacts every string leaf at any
+// depth. MCP tool results carry the same data twice -- as a nested object
+// (structuredContent) and as a JSON-encoded string (content[].text) -- so
+// redacting every leaf handles both without special-casing or re-parsing.
 func redactValue(v any) (any, bool) {
 	switch val := v.(type) {
 	case string:

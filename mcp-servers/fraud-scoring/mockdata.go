@@ -7,11 +7,9 @@ type RiskScore struct {
 	Level   string  `json:"level" jsonschema:"a human-readable risk level, e.g. low, medium, high"`
 }
 
-// mockRiskScores is the hardcoded seed data for this demo. There is no real
-// fraud model behind this; it exists only to give the guided-tour agents
-// something real to look up. Orders not present here default to a low-risk
-// score rather than an error, matching how a real scoring engine would
-// behave for a transaction it has no history on.
+// mockRiskScores is the demo seed data; no real fraud model behind it. Orders
+// not listed default to low risk, not an error, like a real engine scoring a
+// transaction it has no history on.
 var mockRiskScores = map[string]float64{
 	"ORD-1001": 0.05,
 	"ORD-1002": 0.02,
@@ -35,8 +33,7 @@ func riskLevel(score float64) string {
 	}
 }
 
-// scoreTransaction returns a mock risk score for orderID. Unknown orders
-// default to a low-risk score of 0, not an error.
+// scoreTransaction returns a mock risk score for orderID; unknown orders default to 0, not an error.
 func scoreTransaction(orderID string) RiskScore {
 	score := mockRiskScores[orderID]
 	return RiskScore{OrderID: orderID, Score: score, Level: riskLevel(score)}

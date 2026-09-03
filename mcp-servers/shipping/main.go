@@ -1,7 +1,5 @@
-// Command shipping is a mock MCP server exposing one tool over the shipment
-// data in mockdata.go: get_shipment_status. It has no real carrier
-// integration behind it -- this phase of the demo only needs the wire
-// protocol to work.
+// Command shipping is a mock MCP server exposing get_shipment_status. No real
+// carrier integration behind it.
 package main
 
 import (
@@ -15,12 +13,10 @@ import (
 
 const serverName = "shipping"
 
-// GetShipmentStatusInput is the input schema for the get_shipment_status tool.
 type GetShipmentStatusInput struct {
 	OrderID string `json:"order_id" jsonschema:"the order to look up the shipment for"`
 }
 
-// GetShipmentStatusOutput is the output schema for the get_shipment_status tool.
 type GetShipmentStatusOutput struct {
 	Shipment Shipment `json:"shipment" jsonschema:"the matching shipment"`
 }

@@ -1,6 +1,5 @@
-// Command refund-approval is a kagent BYO agent, built on kagent's Go ADK
-// (github.com/kagent-dev/kagent/go/adk), that issues a refund for an order
-// via the payment MCP server. It is the last hop in the returns copilot's
+// Command refund-approval is a kagent BYO agent that issues a refund for an
+// order via the payment MCP server. It is the last hop in the returns copilot's
 // agent chain.
 package main
 
@@ -46,47 +45,37 @@ func main() {
 		}()
 	}
 
-	// LLM calls go through the hub agentgateway's OpenAI-compatible route
-	// (matching finflow's LLM_BASE_URL convention: <gateway>/openai/v1) rather
-	// than hitting OpenAI directly, for cost tracking and telemetry. Empty
-	// LLM_BASE_URL falls back to the OpenAI SDK's default (openai.com), which
-	// is what local dev without a deployed gateway uses.
+	// LLM calls route through the hub agentgateway's OpenAI-compatible path
+	// (<gateway>/openai/v1) for cost tracking and telemetry. Empty LLM_BASE_URL
+	// falls back to the OpenAI SDK default (openai.com) for local dev.
 	llmModel, err := models.NewOpenAIModelWithLogger(&models.OpenAIConfig{
 		Model:   envOr("MODEL_NAME", "gpt-4o-mini"),
 		BaseUrl: os.Getenv("LLM_BASE_URL"),
-		// Reasoning-class models (e.g. gpt-5.6) reject function tools over
-		// /v1/chat/completions unless reasoning_effort is explicitly "none";
-		// standard models neither need nor necessarily accept the param, so it
-		// must stay unset (nil) unless a reasoning model is actually configured
-		// (see MODEL_REASONING_EFFORT in the app manifest).
+		// Reasoning models (e.g. gpt-5.6) reject function tools over
+		// /v1/chat/completions unless reasoning_effort is "none"; standard models
+		// may reject the param, so it stays nil unless MODEL_REASONING_EFFORT is set.
 		ReasoningEffort: envPtr("MODEL_REASONING_EFFORT"),
-		// Low, not zero: the $75 ask_user rule is a deterministic business rule,
-		// not a creative task, and this agent measurably skipped it under
-		// default temperature (live-tested: 3/12 fresh runs correctly knew the
-		// exact refund amount exceeded $75 yet still auto-decided without
-		// asking). Some variance is kept rather than 0 so the demo doesn't feel
-		// robotic across its other free-text summaries.
+		// Low, not zero: under default temperature this agent skipped the mandatory
+		// $75 ask_user rule in 3/12 live runs; kept above 0 so free-text summaries
+		// don't read robotically.
 		Temperature: floatPtr(0.2),
 	}, logger)
 	if err != nil {
 		log.Fatalf("Failed to create LLM model: %v", err)
 	}
 
-	// Wire payment and loyalty-rewards as tool sources. PAYMENT_URL/
-	// LOYALTY_URL point at their respective k8s Services once deployed, or
-	// localhost for local dev. loyalty-rewards-mcp runs on the west cluster
-	// (Phase 10, multicluster) -- LOYALTY_URL routes through agentgateway's
-	// hub-to-AgentRegistry-to-spoke chain, invisible to this agent, which
-	// just sees an ordinary MCP endpoint.
+	// PAYMENT_URL/LOYALTY_URL point at k8s Services once deployed, or localhost for
+	// local dev. loyalty-rewards-mcp runs on the west cluster (multicluster);
+	// LOYALTY_URL routes through agentgateway's hub-to-AgentRegistry-to-spoke chain,
+	// which is invisible here -- this agent just sees an ordinary MCP endpoint.
 	toolsets := adkmcp.CreateToolsets(ctx, []adk.HttpMcpServerConfig{
 		{Params: adk.StreamableHTTPConnectionParams{Url: envOr("PAYMENT_URL", "http://localhost:8080/mcp")}},
 		{Params: adk.StreamableHTTPConnectionParams{Url: envOr("LOYALTY_URL", "http://localhost:8081/mcp")}},
 	}, nil /* no SSE servers */, nil /* no stdio servers */, true /* propagateToken: forward the customer JWT to MCP calls */, nil /* headerProvider */)
 
-	// Elicitation (Stage 3 of the guided tour): for a high-value refund, pause
-	// and ask the customer a real question instead of deciding unilaterally.
-	// ask_user is kagent's own SDK tool -- no custom pause/resume codec needed
-	// here, the agent just calls it like any other tool.
+	// Elicitation (guided-tour Stage 3): for a high-value refund, ask the customer
+	// instead of deciding unilaterally. ask_user is kagent's own SDK tool -- no
+	// custom pause/resume codec needed, the agent just calls it like any tool.
 	askUserTool, err := adktools.NewAskUserTool()
 	if err != nil {
 		log.Fatalf("Failed to create ask_user tool: %v", err)
@@ -170,9 +159,9 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
-// envPtr returns a pointer to the env var's value, or nil if unset -- distinct
-// from envOr's fallback-to-default since an unset ReasoningEffort must stay
-// nil (omitted from the request) rather than fall back to some string value.
+// envPtr returns a pointer to the env var's value, or nil if unset. Unlike
+// envOr, an unset value stays nil (omitted from the request) rather than
+// falling back to a default.
 func envPtr(key string) *string {
 	if v := os.Getenv(key); v != "" {
 		return &v
@@ -180,8 +169,8 @@ func envPtr(key string) *string {
 	return nil
 }
 
-// floatPtr returns a pointer to v -- OpenAIConfig.Temperature is a *float64
-// so an unset value can be told apart from an explicit 0.
+// floatPtr returns a pointer to v so an unset Temperature (nil) is distinct
+// from an explicit 0.
 func floatPtr(v float64) *float64 {
 	return &v
 }

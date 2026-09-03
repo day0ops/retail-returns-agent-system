@@ -2,10 +2,9 @@ package main
 
 import "fmt"
 
-// Order is a single retail order record served by the order-db mock backend.
-// CustomerEmail/CustomerPhone are synthetic PII (Stage 5 of the guided tour,
-// PII masking/guardrails) -- clearly fake contact details a mcp.guardrails
-// CheckResponse processor redacts before the result reaches the caller.
+// Order is a single retail order record from the order-db mock backend.
+// CustomerEmail/CustomerPhone are synthetic PII the mcp.guardrails CheckResponse
+// processor redacts before the caller sees them (Stage 5, PII masking).
 type Order struct {
 	OrderID       string  `json:"order_id" jsonschema:"the order's unique identifier"`
 	CustomerID    string  `json:"customer_id" jsonschema:"the customer who placed the order"`
@@ -17,9 +16,7 @@ type Order struct {
 	PurchaseDate  string  `json:"purchase_date" jsonschema:"the purchase date, in YYYY-MM-DD format"`
 }
 
-// mockOrders is the hardcoded seed data for this demo. There is no database
-// backing this; it exists only to give the guided-tour agents something
-// real to look up.
+// mockOrders is the demo seed data; there is no database behind it.
 var mockOrders = []Order{
 	{OrderID: "ORD-1001", CustomerID: "CUST-100", CustomerEmail: "jane.doe@example.com", CustomerPhone: "555-100-1000", Item: "Wireless Headphones", Amount: 89.99, Status: "delivered", PurchaseDate: "2026-07-02"},
 	{OrderID: "ORD-1002", CustomerID: "CUST-100", CustomerEmail: "jane.doe@example.com", CustomerPhone: "555-100-1000", Item: "USB-C Charging Cable", Amount: 12.50, Status: "delivered", PurchaseDate: "2026-07-15"},
@@ -32,8 +29,7 @@ var mockOrders = []Order{
 	{OrderID: "ORD-1009", CustomerID: "CUST-100", CustomerEmail: "jane.doe@example.com", CustomerPhone: "555-100-1000", Item: "Home Theater Projector", Amount: 649.99, Status: "delivered", PurchaseDate: "2026-07-25"},
 }
 
-// ErrOrderNotFound is returned by getOrder when the requested order ID has
-// no matching record.
+// ErrOrderNotFound means the requested order ID has no matching record.
 type ErrOrderNotFound struct {
 	OrderID string
 }
@@ -42,8 +38,7 @@ func (e *ErrOrderNotFound) Error() string {
 	return fmt.Sprintf("order %q not found", e.OrderID)
 }
 
-// listOrdersByCustomer returns every order placed by the given customer ID,
-// in seed-data order. An empty customerID returns every order.
+// listOrdersByCustomer returns the given customer's orders; an empty customerID returns all.
 func listOrdersByCustomer(customerID string) []Order {
 	if customerID == "" {
 		return mockOrders
@@ -57,8 +52,7 @@ func listOrdersByCustomer(customerID string) []Order {
 	return result
 }
 
-// getOrderByID returns the order matching orderID, or ErrOrderNotFound if no
-// such order exists.
+// getOrderByID returns the order matching orderID, or ErrOrderNotFound.
 func getOrderByID(orderID string) (Order, error) {
 	for _, o := range mockOrders {
 		if o.OrderID == orderID {

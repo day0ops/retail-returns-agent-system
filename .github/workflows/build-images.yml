@@ -2,16 +2,13 @@ name: ci
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
     inputs:
       force_all:
         type: boolean
         default: false
-      semver_tag:
-        description: 'Optional additional tag (e.g. v0.1.0) to cut a known-good checkpoint. Implies force_all.'
-        type: string
-        default: ''
 
 permissions:
   contents: read
@@ -23,6 +20,7 @@ jobs:
     outputs:
       go-components: ${{ steps.components.outputs.result }}
       ui-changed: ${{ steps.filter.outputs.ui }}
+      is-release: ${{ steps.release.outputs.result }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -43,15 +41,19 @@ jobs:
             fraud-check: 'agents/fraud-check/**'
             refund-approval: 'agents/refund-approval/**'
             ui: 'ui/**'
-      # workflow_dispatch's force_all rebuilds every Go component regardless of what
-      # changed (for cutting a demo checkpoint); otherwise use paths-filter's diff.
+      # A push of a `v*` tag is a release: every component gets rebuilt, tagged
+      # with the tag name, and pushed, then the release job publishes it.
+      - id: release
+        run: echo "result=${{ startsWith(github.ref, 'refs/tags/') }}" >> "$GITHUB_OUTPUT"
+      # workflow_dispatch's force_all (or a release) rebuilds every Go component
+      # regardless of what changed; otherwise use paths-filter's diff.
       # ALL_GO_COMPONENTS is kept in sync with the filters above as components are added.
       - id: components
         env:
           ALL_GO_COMPONENTS: >-
             ["order-db","payment","shipping","inventory","fraud-scoring","carrier","loyalty-rewards","pii-guardrail",
             "stage-policy-controller","support-triage","order-lookup","fraud-check","refund-approval"]
-          FORCE_ALL: ${{ github.event.inputs.force_all == 'true' || github.event.inputs.semver_tag != '' }}
+          FORCE_ALL: ${{ github.event.inputs.force_all == 'true' || steps.release.outputs.result == 'true' }}
           CHANGED: ${{ steps.filter.outputs.changes }}
         run: |
           if [ "$FORCE_ALL" = "true" ]; then
@@ -95,7 +97,7 @@ jobs:
           ./mcp-servers/carrier/... ./mcp-servers/loyalty-rewards/... ./pii-guardrail/... ./stage-policy-controller/... -v
 
   lint-test-ui:
-    if: needs.changes.outputs.ui-changed == 'true' || github.event.inputs.force_all == 'true' || github.event.inputs.semver_tag != ''
+    if: needs.changes.outputs.ui-changed == 'true' || github.event.inputs.force_all == 'true' || needs.changes.outputs.is-release == 'true'
     needs: changes
     runs-on: ubuntu-latest
     defaults:
@@ -112,7 +114,7 @@ jobs:
 
   build:
     needs: [changes, lint-test-go]
-    if: needs.changes.outputs.go-components != '[]' || github.event.inputs.force_all == 'true' || github.event.inputs.semver_tag != ''
+    if: needs.changes.outputs.go-components != '[]' || github.event.inputs.force_all == 'true' || needs.changes.outputs.is-release == 'true'
     strategy:
       matrix:
         component: ${{ fromJson(needs.changes.outputs.go-components) }}
@@ -134,23 +136,26 @@ jobs:
           DIR=$(find . -maxdepth 2 -type d -name "${{ matrix.component }}")
           IMG="australia-southeast1-docker.pkg.dev/field-engineering-apac/kasunt/retail-returns-${{ matrix.component }}"
           SHORT_SHA="${GITHUB_SHA:0:7}"
-          SEMVER_TAG="${{ github.event.inputs.semver_tag }}"
+          GIT_TAG=""
+          if [ "${{ needs.changes.outputs.is-release }}" = "true" ]; then
+            GIT_TAG="${{ github.ref_name }}"
+          fi
           TAGS=(-t "$IMG:$SHORT_SHA" -t "$IMG:latest")
-          if [ -n "$SEMVER_TAG" ]; then
-            TAGS+=(-t "$IMG:$SEMVER_TAG")
+          if [ -n "$GIT_TAG" ]; then
+            TAGS+=(-t "$IMG:$GIT_TAG")
           fi
           docker build "${TAGS[@]}" "$DIR"
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             docker push "$IMG:$SHORT_SHA"
             docker push "$IMG:latest"
-            if [ -n "$SEMVER_TAG" ]; then
-              docker push "$IMG:$SEMVER_TAG"
+            if [ -n "$GIT_TAG" ]; then
+              docker push "$IMG:$GIT_TAG"
             fi
           fi
 
   build-ui:
     needs: [changes, lint-test-ui]
-    if: needs.changes.outputs.ui-changed == 'true' || github.event.inputs.force_all == 'true' || github.event.inputs.semver_tag != ''
+    if: needs.changes.outputs.ui-changed == 'true' || github.event.inputs.force_all == 'true' || needs.changes.outputs.is-release == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -165,16 +170,49 @@ jobs:
           set -euo pipefail
           IMG="australia-southeast1-docker.pkg.dev/field-engineering-apac/kasunt/retail-returns-ui"
           SHORT_SHA="${GITHUB_SHA:0:7}"
-          SEMVER_TAG="${{ github.event.inputs.semver_tag }}"
+          GIT_TAG=""
+          if [ "${{ needs.changes.outputs.is-release }}" = "true" ]; then
+            GIT_TAG="${{ github.ref_name }}"
+          fi
           TAGS=(-t "$IMG:$SHORT_SHA" -t "$IMG:latest")
-          if [ -n "$SEMVER_TAG" ]; then
-            TAGS+=(-t "$IMG:$SEMVER_TAG")
+          if [ -n "$GIT_TAG" ]; then
+            TAGS+=(-t "$IMG:$GIT_TAG")
           fi
           docker build "${TAGS[@]}" ui
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             docker push "$IMG:$SHORT_SHA"
             docker push "$IMG:latest"
-            if [ -n "$SEMVER_TAG" ]; then
-              docker push "$IMG:$SEMVER_TAG"
+            if [ -n "$GIT_TAG" ]; then
+              docker push "$IMG:$GIT_TAG"
             fi
           fi
+
+  release:
+    needs: [changes, build, build-ui]
+    if: needs.changes.outputs.is-release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: List image locations
+        env:
+          GO_COMPONENTS: ${{ needs.changes.outputs.go-components }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          REGISTRY="australia-southeast1-docker.pkg.dev/field-engineering-apac/kasunt"
+          {
+            echo "## Images"
+            echo "$GO_COMPONENTS" | jq -r '.[]' | while read -r component; do
+              echo "- \`$REGISTRY/retail-returns-$component:$TAG\`"
+            done
+            echo "- \`$REGISTRY/retail-returns-ui:$TAG\`"
+          } > release-notes.md
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --repo "${{ github.repository }}" \
+            --title "${{ github.ref_name }}" \
+            --notes-file release-notes.md
