@@ -11,6 +11,7 @@ use (
 	./mcp-servers/loyalty-rewards
 	./mcp-servers/order-db
 	./mcp-servers/payment
+	./mcp-servers/returns-eligibility
 	./mcp-servers/shipping
 	./pii-guardrail
 	./stage-policy-controller

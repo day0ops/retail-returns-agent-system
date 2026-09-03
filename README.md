@@ -34,6 +34,7 @@ You watch an agent look up an order, check it for fraud signals, and approve a r
 │   ├── loyalty-rewards
 │   ├── order-db
 │   ├── payment
+│   ├── returns-eligibility
 │   └── shipping
 ├── pii-guardrail
 ├── stage-policy-controller

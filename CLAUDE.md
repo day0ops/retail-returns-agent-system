@@ -32,6 +32,8 @@ mcp-servers/       mock MCP servers, one tool domain each, no real backend behin
   fraud-scoring/      score_transaction
   carrier/            link_carrier_account (own Backend - see Gotchas)
   loyalty-rewards/    get_loyalty_balance, award_points (west-cluster only)
+  returns-eligibility/ check_return_window, override_return_window (kagent-native
+                        MCPServer, not AgentRegistry-catalogued - see Gotchas)
 pii-guardrail/     agentgateway ExtMcp guardrails hook; masks PII in tool results
 stage-policy-controller/  applies/removes EnterpriseAgentgatewayPolicy CRDs on
                           demand so the UI can toggle a stage's backend policy
@@ -88,3 +90,10 @@ npm test                 # vitest run
 - `pii-guardrail` and `stage-policy-controller` live at the repo root, not under
   `agents/` or `mcp-servers/` - the CI image-build step finds their Dockerfile via
   `find . -maxdepth 2 -type d -name "<component>"`, which covers all three shapes.
+- `returns-eligibility` is built and pushed by this repo's CI like every other
+  MCP server, but deployed differently in `agentic-field-kit`: as a native
+  kagent `MCPServer` CR (kagent deploys the pod itself from the image), not the
+  plain Kubernetes `Deployment` + AgentRegistry-catalog pattern the other 6
+  servers use. Required so kagent's `AccessPolicy` can target it by name/tool
+  (Stage 11) - `AccessPolicy`'s `MCPServer` target only resolves against a real
+  `MCPServer.kagent.dev` object, not a plain Deployment or `RemoteMCPServer`.
