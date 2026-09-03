@@ -37,6 +37,9 @@ var (
 	budgetGVR = schema.GroupVersionResource{
 		Group: "enterpriseagentgateway.solo.io", Version: "v1alpha1", Resource: "enterpriseagentgatewaybudgets",
 	}
+	accessPolicyGVR = schema.GroupVersionResource{
+		Group: "policy.kagent-enterprise.solo.io", Version: "v1alpha1", Resource: "accesspolicies",
+	}
 )
 
 // viewRef points at one already-provisioned object a policy view shows: read-only,
@@ -59,6 +62,12 @@ var policyViews = map[string][]viewRef{
 	},
 	"pii-guardrail": {
 		{gvr: policyGVR, kind: "EnterpriseAgentgatewayPolicy", name: "retail-returns-pii-guardrail", namespace: "agentregistry-system"},
+	},
+	"access-policy-agent": {
+		{gvr: accessPolicyGVR, kind: "AccessPolicy", name: "retail-returns-fraud-check-jwt-claim", namespace: "kagent"},
+	},
+	"access-policy-tool": {
+		{gvr: accessPolicyGVR, kind: "AccessPolicy", name: "retail-returns-deny-override-return-window", namespace: "kagent"},
 	},
 }
 
