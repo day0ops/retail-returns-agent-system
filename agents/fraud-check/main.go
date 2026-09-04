@@ -20,6 +20,7 @@ import (
 	"github.com/kagent-dev/kagent/go/adk/pkg/app"
 	adkmcp "github.com/kagent-dev/kagent/go/adk/pkg/mcp"
 	"github.com/kagent-dev/kagent/go/adk/pkg/models"
+	kagentsts "github.com/kagent-dev/kagent/go/adk/pkg/sts"
 	kagenttelemetry "github.com/kagent-dev/kagent/go/adk/pkg/telemetry"
 	adktools "github.com/kagent-dev/kagent/go/adk/pkg/tools"
 	"github.com/kagent-dev/kagent/go/api/adk"
@@ -31,6 +32,36 @@ import (
 	adktool "google.golang.org/adk/v2/tool"
 	"google.golang.org/adk/v2/tool/functiontool"
 )
+
+// buildSTSPlugin wires the kagent SDK's built-in STS token-propagation
+// plugin when STS_WELL_KNOWN_URI is set: it exchanges the customer JWT
+// (forwarded via A2A from order-lookup) and this pod's own Kubernetes
+// ServiceAccount token for an RFC 8693 delegation token -- one that keeps
+// the customer's `sub` but adds a real `act` claim recording this agent as
+// the delegate -- and injects it into this agent's own outbound MCP tool
+// calls, replacing the raw forwarded customer JWT. Returns nil when unset
+// (e.g. local dev), leaving propagateToken's raw forwarding as the only
+// behavior. Mirrors order-lookup/main.go's buildSTSPlugin.
+func buildSTSPlugin(logger logr.Logger) *kagentsts.TokenPropagationPlugin {
+	wellKnownURI := strings.TrimSpace(os.Getenv("STS_WELL_KNOWN_URI"))
+	if wellKnownURI == "" {
+		return nil
+	}
+	cfg := kagentsts.DefaultSTSConfig(wellKnownURI)
+	integration, err := kagentsts.NewSTSIntegration(
+		wellKnownURI,
+		"",  // serviceAccountTokenPath: default projected-token path
+		nil, // fetchActorToken: default to the pod's own SA token
+		nil, // getSubjectToken: default to the forwarded bearer token as-is
+		cfg.Timeout,
+		*cfg.VerifySSL,
+		cfg.UseIssuerHost,
+	)
+	if err != nil {
+		log.Fatalf("Failed to initialize STS integration: %v", err)
+	}
+	return kagentsts.NewTokenPropagationPlugin(integration, logger, nil, nil)
+}
 
 // WhoamiOutput mirrors order-db-mcp's own whoami tool (mcp-servers/order-db/main.go)
 // -- same diagnostic idea, ported to an A2A agent's inbound call context instead of
@@ -119,11 +150,26 @@ func main() {
 		log.Fatalf("Failed to create LLM model: %v", err)
 	}
 
+	// STS delegation: when wired, fraud-check's own outbound MCP calls (below)
+	// carry a token proving *this agent* acted on the customer's behalf, instead
+	// of the raw forwarded customer JWT. See buildSTSPlugin.
+	stsPlugin := buildSTSPlugin(logger)
+	var pluginConfig runner.PluginConfig
+	var mcpHeaderProvider adkmcp.DynamicHeaderProvider
+	if stsPlugin != nil {
+		mcpHeaderProvider = stsPlugin.HeaderProvider
+		stsADKPlugin, err := stsPlugin.ADKPlugin()
+		if err != nil {
+			log.Fatalf("Failed to create STS ADK plugin: %v", err)
+		}
+		pluginConfig.Plugins = append(pluginConfig.Plugins, stsADKPlugin)
+	}
+
 	// FRAUD_SCORING_URL points at the k8s Service once deployed, or localhost:8080
 	// for local dev.
 	toolsets := adkmcp.CreateToolsets(ctx, []adk.HttpMcpServerConfig{
 		{Params: adk.StreamableHTTPConnectionParams{Url: envOr("FRAUD_SCORING_URL", "http://localhost:8080/mcp")}},
-	}, nil /* no SSE servers */, nil /* no stdio servers */, true /* propagateToken: forward the customer JWT to MCP calls */, nil /* headerProvider */)
+	}, nil /* no SSE servers */, nil /* no stdio servers */, true /* propagateToken: forward the customer JWT to MCP calls */, mcpHeaderProvider)
 
 	// Hands off to refund_approval once risk is scored. propagateToken forwards
 	// the customer JWT; isolateSessions (see support-triage order_lookup) prevents
@@ -172,6 +218,7 @@ func main() {
 		AppName:        "fraud-check",
 		Agent:          fraudCheck,
 		SessionService: adksession.InMemoryService(),
+		PluginConfig:   pluginConfig,
 	}
 	executor := kagenta2a.NewKAgentExecutor(kagenta2a.KAgentExecutorConfig{
 		RunnerConfig: runnerConfig,

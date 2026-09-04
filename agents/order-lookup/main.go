@@ -16,6 +16,7 @@ import (
 	"github.com/kagent-dev/kagent/go/adk/pkg/app"
 	adkmcp "github.com/kagent-dev/kagent/go/adk/pkg/mcp"
 	"github.com/kagent-dev/kagent/go/adk/pkg/models"
+	kagentsts "github.com/kagent-dev/kagent/go/adk/pkg/sts"
 	kagenttelemetry "github.com/kagent-dev/kagent/go/adk/pkg/telemetry"
 	adktools "github.com/kagent-dev/kagent/go/adk/pkg/tools"
 	"github.com/kagent-dev/kagent/go/api/adk"
@@ -26,33 +27,33 @@ import (
 	adktool "google.golang.org/adk/v2/tool"
 )
 
-// ActorTokenHeader carries this agent's own identity (its Kubernetes
-// ServiceAccount token) alongside the forwarded customer token on outbound
-// A2A calls, so agentgateway's token-exchange policy can request an RFC 8693
-// Delegation-mode exchange (actor_token) instead of Impersonation -- the
-// resulting token's `act` claim records "order-lookup acted on this
-// customer's behalf" instead of silently masking as the customer.
-const ActorTokenHeader = "X-Actor-Token"
-
-// defaultServiceAccountTokenPath is where Kubernetes projects this pod's own
-// bound ServiceAccount token (kubelet-managed, auto-refreshed -- not a
-// long-lived Secret). Read once at startup: acceptable for this prototype's
-// short-lived session, but the token expires (default 1h) and isn't
-// re-read, unlike a production implementation that would need to reload it
-// per call or on a timer.
-const defaultServiceAccountTokenPath = "/var/run/secrets/kubernetes.io/serviceaccount/token"
-
-// readServiceAccountToken reads this pod's own projected ServiceAccount
-// token, used as the actor credential for delegation. Returns "" (not an
-// error) when absent -- e.g. local dev without a real ServiceAccount mount --
-// so the agent still starts, just without delegation support.
-func readServiceAccountToken() string {
-	path := envOr("SERVICE_ACCOUNT_TOKEN_PATH", defaultServiceAccountTokenPath)
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return ""
+// buildSTSPlugin wires the kagent SDK's built-in STS token-propagation
+// plugin when STS_WELL_KNOWN_URI is set: it exchanges the customer JWT
+// (forwarded via A2A/HTTP) and this pod's own Kubernetes ServiceAccount
+// token for an RFC 8693 delegation token -- one that keeps the customer's
+// `sub` but adds a real `act` claim recording this agent as the delegate --
+// and injects it into this agent's own outbound MCP tool calls, replacing
+// the raw forwarded customer JWT. Returns nil when unset (e.g. local dev),
+// leaving propagateToken's raw forwarding as the only behavior.
+func buildSTSPlugin(logger logr.Logger) *kagentsts.TokenPropagationPlugin {
+	wellKnownURI := strings.TrimSpace(os.Getenv("STS_WELL_KNOWN_URI"))
+	if wellKnownURI == "" {
+		return nil
 	}
-	return strings.TrimSpace(string(data))
+	cfg := kagentsts.DefaultSTSConfig(wellKnownURI)
+	integration, err := kagentsts.NewSTSIntegration(
+		wellKnownURI,
+		"",  // serviceAccountTokenPath: default projected-token path
+		nil, // fetchActorToken: default to the pod's own SA token
+		nil, // getSubjectToken: default to the forwarded bearer token as-is
+		cfg.Timeout,
+		*cfg.VerifySSL,
+		cfg.UseIssuerHost,
+	)
+	if err != nil {
+		log.Fatalf("Failed to initialize STS integration: %v", err)
+	}
+	return kagentsts.NewTokenPropagationPlugin(integration, logger, nil, nil)
 }
 
 func main() {
@@ -89,23 +90,27 @@ func main() {
 		log.Fatalf("Failed to create LLM model: %v", err)
 	}
 
+	// STS delegation: when wired, order-lookup's own outbound MCP calls (below)
+	// carry a token proving *this agent* acted on the customer's behalf, instead
+	// of the raw forwarded customer JWT. See buildSTSPlugin.
+	stsPlugin := buildSTSPlugin(logger)
+	var pluginConfig runner.PluginConfig
+	var mcpHeaderProvider adkmcp.DynamicHeaderProvider
+	if stsPlugin != nil {
+		mcpHeaderProvider = stsPlugin.HeaderProvider
+		stsADKPlugin, err := stsPlugin.ADKPlugin()
+		if err != nil {
+			log.Fatalf("Failed to create STS ADK plugin: %v", err)
+		}
+		pluginConfig.Plugins = append(pluginConfig.Plugins, stsADKPlugin)
+	}
+
 	// ORDER_DB_URL and SHIPPING_URL point at k8s Service DNS once deployed, or
 	// localhost for local dev.
 	toolsets := adkmcp.CreateToolsets(ctx, []adk.HttpMcpServerConfig{
 		{Params: adk.StreamableHTTPConnectionParams{Url: envOr("ORDER_DB_URL", "http://localhost:8080/mcp")}},
 		{Params: adk.StreamableHTTPConnectionParams{Url: envOr("SHIPPING_URL", "http://localhost:8081/mcp")}},
-	}, nil /* no SSE servers */, nil /* no stdio servers */, true /* propagateToken: forward the customer JWT to MCP calls */, nil /* headerProvider */)
-
-	// Prototype: RFC 8693 Delegation on the A2A hop to fraud_check. Static
-	// (read once at startup, not per-call -- see readServiceAccountToken)
-	// since NewKAgentRemoteA2ATool's extraHeaders are fixed at tool
-	// construction time. Empty when no ServiceAccount token is mounted (e.g.
-	// local dev), in which case agentgateway's delegation policy falls back
-	// to whatever it does with a missing actor_token.
-	var fraudCheckHeaders map[string]string
-	if token := readServiceAccountToken(); token != "" {
-		fraudCheckHeaders = map[string]string{ActorTokenHeader: token}
-	}
+	}, nil /* no SSE servers */, nil /* no stdio servers */, true /* propagateToken: forward the customer JWT to MCP calls */, mcpHeaderProvider)
 
 	// Next A2A hop, handing off to fraud_check. The two bools are propagateToken
 	// (forward the customer JWT, as with the MCP calls above) and isolateSessions;
@@ -115,7 +120,7 @@ func main() {
 		"fraud_check",
 		"Delegates transaction fraud risk scoring to the fraud-check agent",
 		envOr("FRAUD_CHECK_AGENT_URL", "http://localhost:8082"),
-		nil, fraudCheckHeaders, true, true,
+		nil, nil, true, true,
 	)
 	if err != nil {
 		log.Fatalf("Failed to create fraud_check A2A tool: %v", err)
@@ -145,6 +150,7 @@ func main() {
 		AppName:        "order-lookup",
 		Agent:          orderLookup,
 		SessionService: adksession.InMemoryService(),
+		PluginConfig:   pluginConfig,
 	}
 	executor := kagenta2a.NewKAgentExecutor(kagenta2a.KAgentExecutorConfig{
 		RunnerConfig: runnerConfig,
