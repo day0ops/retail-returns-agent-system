@@ -11,6 +11,13 @@ import type { StageProps } from '@/pages/stage-props'
 
 type Claims = Record<string, unknown>
 
+interface ToolCallStep {
+  name: string
+  args?: unknown
+  result?: unknown
+  error?: string
+}
+
 const ASK_PROMPT =
   'Please call the whoami diagnostic tool on order-db and tell me exactly what it returned, including every claim.'
 
@@ -36,6 +43,10 @@ export function Stage2TokenExchange({ onNext, onBack }: StageProps) {
   const [agentFailed, setAgentFailed] = useState(false)
   const [askError, setAskError] = useState<string | null>(null)
   const [asking, setAsking] = useState(false)
+  // The LLM's reply above paraphrases this -- whoamiClaims is the tool call's actual,
+  // unparaphrased JSON result, letting the UI show a genuine side-by-side against
+  // the customer's original token instead of trusting the model's retelling.
+  const [whoamiClaims, setWhoamiClaims] = useState<Claims | null>(null)
 
   async function handleLogin() {
     setLoggingIn(true)
@@ -66,6 +77,10 @@ export function Stage2TokenExchange({ onNext, onBack }: StageProps) {
       if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`)
       setAgentReply(body.replyText)
       setAgentFailed(Boolean(body.failed))
+      const steps = (body.steps as ToolCallStep[] | undefined) ?? []
+      const whoamiStep = steps.find((step) => step.name === 'whoami')
+      const whoamiResult = whoamiStep?.result as { claims?: Claims } | undefined
+      setWhoamiClaims(whoamiResult?.claims ?? null)
     } catch (err) {
       setAskError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -166,12 +181,18 @@ export function Stage2TokenExchange({ onNext, onBack }: StageProps) {
               <div className="flex flex-col gap-2">
                 <p className="text-muted-foreground text-sm font-medium">
                   <KeyRound className="mr-1 inline size-3.5" />
-                  What order-db actually received
+                  support-triage's reply
                 </p>
                 <pre className="bg-muted overflow-x-auto rounded-lg p-3 text-xs whitespace-pre-wrap">
                   {agentReply}
                 </pre>
               </div>
+            )}
+            {whoamiClaims && (
+              <ClaimsBlock
+                label="What order-db actually received (raw whoami output)"
+                claims={whoamiClaims}
+              />
             )}
           </CardContent>
         </Card>
