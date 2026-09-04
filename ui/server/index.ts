@@ -182,7 +182,14 @@ app.post('/api/stage2/ask', async (req, res) => {
   }
   try {
     const result = await sendMessage(config.supportTriageUrl, message, currentCustomerToken)
-    res.json({ ...result, failed: isTaskFailed(result.raw) })
+    res.json({
+      ...result,
+      failed: isTaskFailed(result.raw),
+      // The LLM's own prose reply paraphrases whoami's output -- extractToolCallSteps
+      // gives the UI the tool call's actual, unparaphrased JSON result to display
+      // alongside it (same mechanism Stage 3 already uses for its handoff trace).
+      steps: extractToolCallSteps(result.raw),
+    })
   } catch (err) {
     res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
   }
