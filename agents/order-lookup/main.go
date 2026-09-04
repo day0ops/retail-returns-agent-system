@@ -6,6 +6,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	a2atype "github.com/a2aproject/a2a-go/v2/a2a"
@@ -24,6 +25,35 @@ import (
 	adksession "google.golang.org/adk/v2/session"
 	adktool "google.golang.org/adk/v2/tool"
 )
+
+// ActorTokenHeader carries this agent's own identity (its Kubernetes
+// ServiceAccount token) alongside the forwarded customer token on outbound
+// A2A calls, so agentgateway's token-exchange policy can request an RFC 8693
+// Delegation-mode exchange (actor_token) instead of Impersonation -- the
+// resulting token's `act` claim records "order-lookup acted on this
+// customer's behalf" instead of silently masking as the customer.
+const ActorTokenHeader = "X-Actor-Token"
+
+// defaultServiceAccountTokenPath is where Kubernetes projects this pod's own
+// bound ServiceAccount token (kubelet-managed, auto-refreshed -- not a
+// long-lived Secret). Read once at startup: acceptable for this prototype's
+// short-lived session, but the token expires (default 1h) and isn't
+// re-read, unlike a production implementation that would need to reload it
+// per call or on a timer.
+const defaultServiceAccountTokenPath = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+
+// readServiceAccountToken reads this pod's own projected ServiceAccount
+// token, used as the actor credential for delegation. Returns "" (not an
+// error) when absent -- e.g. local dev without a real ServiceAccount mount --
+// so the agent still starts, just without delegation support.
+func readServiceAccountToken() string {
+	path := envOr("SERVICE_ACCOUNT_TOKEN_PATH", defaultServiceAccountTokenPath)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
 
 func main() {
 	zapLogger, _ := zap.NewProduction()
@@ -66,6 +96,17 @@ func main() {
 		{Params: adk.StreamableHTTPConnectionParams{Url: envOr("SHIPPING_URL", "http://localhost:8081/mcp")}},
 	}, nil /* no SSE servers */, nil /* no stdio servers */, true /* propagateToken: forward the customer JWT to MCP calls */, nil /* headerProvider */)
 
+	// Prototype: RFC 8693 Delegation on the A2A hop to fraud_check. Static
+	// (read once at startup, not per-call -- see readServiceAccountToken)
+	// since NewKAgentRemoteA2ATool's extraHeaders are fixed at tool
+	// construction time. Empty when no ServiceAccount token is mounted (e.g.
+	// local dev), in which case agentgateway's delegation policy falls back
+	// to whatever it does with a missing actor_token.
+	var fraudCheckHeaders map[string]string
+	if token := readServiceAccountToken(); token != "" {
+		fraudCheckHeaders = map[string]string{ActorTokenHeader: token}
+	}
+
 	// Next A2A hop, handing off to fraud_check. The two bools are propagateToken
 	// (forward the customer JWT, as with the MCP calls above) and isolateSessions;
 	// isolateSessions must be true, see support-triage/main.go's order_lookup tool
@@ -74,7 +115,7 @@ func main() {
 		"fraud_check",
 		"Delegates transaction fraud risk scoring to the fraud-check agent",
 		envOr("FRAUD_CHECK_AGENT_URL", "http://localhost:8082"),
-		nil, nil, true, true,
+		nil, fraudCheckHeaders, true, true,
 	)
 	if err != nil {
 		log.Fatalf("Failed to create fraud_check A2A tool: %v", err)

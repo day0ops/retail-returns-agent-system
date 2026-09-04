@@ -4,11 +4,16 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	a2atype "github.com/a2aproject/a2a-go/v2/a2a"
+	"github.com/a2aproject/a2a-go/v2/a2asrv"
 	"github.com/go-logr/logr"
 	"github.com/go-logr/zapr"
 	kagenta2a "github.com/kagent-dev/kagent/go/adk/pkg/a2a"
@@ -19,11 +24,66 @@ import (
 	adktools "github.com/kagent-dev/kagent/go/adk/pkg/tools"
 	"github.com/kagent-dev/kagent/go/api/adk"
 	"go.uber.org/zap"
+	adkagent "google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/agent/llmagent"
 	"google.golang.org/adk/v2/runner"
 	adksession "google.golang.org/adk/v2/session"
 	adktool "google.golang.org/adk/v2/tool"
+	"google.golang.org/adk/v2/tool/functiontool"
 )
+
+// WhoamiOutput mirrors order-db-mcp's own whoami tool (mcp-servers/order-db/main.go)
+// -- same diagnostic idea, ported to an A2A agent's inbound call context instead of
+// an MCP server's HTTP request.
+type WhoamiOutput struct {
+	AuthorizationPresent bool           `json:"authorization_present" jsonschema:"whether an Authorization header was received on this A2A call"`
+	Claims               map[string]any `json:"claims,omitempty" jsonschema:"decoded (unverified) JWT claims from the received token, if present and well-formed"`
+}
+
+// whoamiHandler decodes the claims of the bearer token this agent actually
+// received on the current A2A call, to prove agentgateway's delegation
+// exchange populated a real `act` claim (RFC 8693 delegation prototype).
+// No signature verification -- display aid, not an auth check.
+//
+// a2asrv.CallContextFrom(ctx) reads the SAME inbound call metadata that
+// authzForwardingInterceptor (kagent SDK's remote_a2a_tool.go) already
+// forwards onward to the next A2A hop -- this just reads it instead of
+// relaying it.
+func whoamiHandler(ctx adkagent.Context, _ struct{}) (WhoamiOutput, error) {
+	callCtx, ok := a2asrv.CallContextFrom(ctx)
+	if !ok {
+		return WhoamiOutput{}, nil
+	}
+	authHeader, ok := callCtx.ServiceParams().Get("authorization")
+	if !ok || len(authHeader) == 0 || authHeader[0] == "" {
+		return WhoamiOutput{}, nil
+	}
+	claims, err := decodeJWTClaims(authHeader[0])
+	if err != nil {
+		// Malformed token: report it arrived, but with no claims.
+		return WhoamiOutput{AuthorizationPresent: true}, nil
+	}
+	return WhoamiOutput{AuthorizationPresent: true, Claims: claims}, nil
+}
+
+// decodeJWTClaims base64url-decodes a JWT payload as JSON. It does not verify
+// the signature; the result is a display value, not authenticated identity.
+func decodeJWTClaims(authHeader string) (map[string]any, error) {
+	token := strings.TrimPrefix(authHeader, "Bearer ")
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return nil, fmt.Errorf("not a JWT: expected 3 dot-separated parts, got %d", len(parts))
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return nil, fmt.Errorf("decoding JWT payload: %w", err)
+	}
+	var claims map[string]any
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return nil, fmt.Errorf("parsing JWT claims: %w", err)
+	}
+	return claims, nil
+}
 
 func main() {
 	zapLogger, _ := zap.NewProduction()
@@ -80,6 +140,14 @@ func main() {
 		log.Fatalf("Failed to create refund_approval A2A tool: %v", err)
 	}
 
+	whoamiTool, err := functiontool.New(functiontool.Config{
+		Name:        "whoami",
+		Description: "Diagnostic: decode the Authorization header this agent actually received on this A2A call, to prove token delegation happened",
+	}, whoamiHandler)
+	if err != nil {
+		log.Fatalf("Failed to create whoami tool: %v", err)
+	}
+
 	fraudCheck, err := llmagent.New(llmagent.Config{
 		Name:        "fraud_check",
 		Description: "Scores an order's fraud risk before a refund is approved",
@@ -94,7 +162,7 @@ func main() {
 			"method and loyalty account. Summarize the final outcome.",
 		Model:    llmModel,
 		Toolsets: toolsets,
-		Tools:    []adktool.Tool{refundApprovalTool},
+		Tools:    []adktool.Tool{refundApprovalTool, whoamiTool},
 	})
 	if err != nil {
 		log.Fatalf("Failed to create fraud_check agent: %v", err)
