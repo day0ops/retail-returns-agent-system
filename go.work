@@ -1,0 +1,19 @@
+go 1.27.0
+
+use (
+	./access-policy-test-harness
+	./agents/fraud-check
+	./agents/order-lookup
+	./agents/refund-approval
+	./agents/support-triage
+	./mcp-servers/carrier
+	./mcp-servers/fraud-scoring
+	./mcp-servers/inventory
+	./mcp-servers/loyalty-rewards
+	./mcp-servers/order-db
+	./mcp-servers/payment
+	./mcp-servers/returns-eligibility
+	./mcp-servers/shipping
+	./pii-guardrail
+	./stage-policy-controller
+)
