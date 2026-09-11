@@ -140,6 +140,23 @@ const budgetCustomerTokens: Record<'customer1' | 'customer2', string | null> = {
   customer2: null,
 }
 
+// Reads the freshest identity available for this request. When accessed via the real
+// gate, ext-auth-service re-validates the browser's session on every request and --
+// because its AuthConfig has allowRefreshing: true -- silently refreshes an expired
+// access token, forwarding the live result in this header each time. Reading it fresh
+// per request (instead of relying only on whatever /api/stage2/login captured once) is
+// what actually benefits from that refresh; the module-level singleton alone never
+// changes after that first read. Falls back to the singleton for the gate-less ROPC
+// path, where there's no per-request header to read.
+function resolveCustomerToken(req: express.Request): string | null {
+  const forwarded = req.header('x-retail-returns-customer-token')
+  if (forwarded) {
+    currentCustomerToken = forwarded
+    return forwarded
+  }
+  return currentCustomerToken
+}
+
 const app = express()
 app.use(express.json())
 
@@ -197,7 +214,8 @@ app.get('/logout', (_req, res) => {
 })
 
 app.post('/api/stage2/ask', async (req, res) => {
-  if (!currentCustomerToken) {
+  const token = resolveCustomerToken(req)
+  if (!token) {
     res.status(401).json({ error: 'not logged in — call /api/stage2/login first' })
     return
   }
@@ -207,7 +225,7 @@ app.post('/api/stage2/ask', async (req, res) => {
     return
   }
   try {
-    const result = await sendMessage(config.supportTriageUrl, message, currentCustomerToken)
+    const result = await sendMessage(config.supportTriageUrl, message, token)
     res.json({
       ...result,
       failed: isTaskFailed(result.raw),
@@ -227,7 +245,8 @@ app.post('/api/stage2/ask', async (req, res) => {
 // itself. `steps` gives the UI each hop's tool call/response without it having
 // to re-parse the raw A2A task shape.
 app.post('/api/stage3/ask', async (req, res) => {
-  if (!currentCustomerToken) {
+  const token = resolveCustomerToken(req)
+  if (!token) {
     res.status(401).json({ error: 'not logged in — call /api/stage2/login first' })
     return
   }
@@ -237,7 +256,7 @@ app.post('/api/stage3/ask', async (req, res) => {
     return
   }
   try {
-    const result = await sendMessage(config.supportTriageUrl, message, currentCustomerToken)
+    const result = await sendMessage(config.supportTriageUrl, message, token)
     res.json({ ...result, steps: extractToolCallSteps(result.raw) })
   } catch (err) {
     res.status(502).json({ error: err instanceof Error ? err.message : String(err) })
@@ -256,7 +275,8 @@ app.post('/api/stage3/ask', async (req, res) => {
 // of docs/superpowers/specs/2026-08-26-retail-returns-copilot-design.md in
 // agentic-field-kit for the full investigation.
 app.post('/api/stage-elicitation/ask', async (req, res) => {
-  if (!currentCustomerToken) {
+  const token = resolveCustomerToken(req)
+  if (!token) {
     res.status(401).json({ error: 'not logged in — call /api/stage2/login first' })
     return
   }
@@ -266,7 +286,7 @@ app.post('/api/stage-elicitation/ask', async (req, res) => {
     return
   }
   try {
-    const result = await sendMessage(config.supportTriageUrl, message, currentCustomerToken)
+    const result = await sendMessage(config.supportTriageUrl, message, token)
     const pending = extractPendingQuestion(result.raw)
     if (pending) {
       pendingElicitation = pending
@@ -285,7 +305,8 @@ app.post('/api/stage-elicitation/ask', async (req, res) => {
 })
 
 app.post('/api/stage-elicitation/answer', async (req, res) => {
-  if (!currentCustomerToken) {
+  const token = resolveCustomerToken(req)
+  if (!token) {
     res.status(401).json({ error: 'not logged in — call /api/stage2/login first' })
     return
   }
@@ -303,7 +324,7 @@ app.post('/api/stage-elicitation/answer', async (req, res) => {
       config.supportTriageUrl,
       pendingElicitation,
       [[answer]],
-      currentCustomerToken,
+      token,
     )
     if (outcome.kind === 'input-required') {
       pendingElicitation = outcome.pending
@@ -324,14 +345,15 @@ app.post('/api/stage-elicitation/answer', async (req, res) => {
 // same server's catalog into one code-execution meta-tool. UI labels this
 // "Show me" / "Full tool list" / "Collapsed to one instruction" -- no
 // "codeMode"/"entMcp" jargon reaches the presenter's audience.
-app.get('/api/stage-tool-policy/codemode-comparison', async (_req, res) => {
-  if (!currentCustomerToken) {
+app.get('/api/stage-tool-policy/codemode-comparison', async (req, res) => {
+  const token = resolveCustomerToken(req)
+  if (!token) {
     res.status(401).json({ error: 'not logged in — call /api/stage2/login first' })
     return
   }
   try {
     const [before, after] = await Promise.all([
-      listTools(config.orderDbMcpUrl, currentCustomerToken),
+      listTools(config.orderDbMcpUrl, token),
       listTools(config.orderDbCodemodeMcpUrl),
     ])
     res.json({ before, after })
@@ -435,24 +457,21 @@ const TOOL_POLICY_DEMO_MESSAGE =
   'on 2026-07-15, delivered by FastShip (tracking FS100200), for customer CUST-100. ' +
   'Please process the full refund.'
 
-app.post('/api/stage-tool-policy/ask', async (_req, res) => {
-  if (!currentCustomerToken) {
+app.post('/api/stage-tool-policy/ask', async (req, res) => {
+  const token = resolveCustomerToken(req)
+  if (!token) {
     res.status(401).json({ error: 'not logged in — call /api/stage2/login first' })
     return
   }
   try {
-    const result = await sendMessage(
-      config.supportTriageUrl,
-      TOOL_POLICY_DEMO_MESSAGE,
-      currentCustomerToken,
-    )
+    const result = await sendMessage(config.supportTriageUrl, TOOL_POLICY_DEMO_MESSAGE, token)
     let directCheck: { blocked: boolean; detail: string }
     try {
       const callResult = await callTool(
         config.paymentMcpUrl,
         'refund_payment',
         { order_id: TOOL_POLICY_DEMO_ORDER.orderId, amount: TOOL_POLICY_DEMO_ORDER.amount },
-        currentCustomerToken,
+        token,
       )
       directCheck = { blocked: false, detail: JSON.stringify(callResult) }
     } catch (err) {
@@ -472,15 +491,16 @@ app.post('/api/stage-tool-policy/ask', async (_req, res) => {
 // own Service (raw, agentgateway and its pii-guardrail-policy never see it) and
 // once through the real agentgateway route real agents already use (now
 // carrying the guardrail hook), for a side-by-side redacted-vs-not comparison.
-app.get('/api/stage-pii/compare', async (_req, res) => {
-  if (!currentCustomerToken) {
+app.get('/api/stage-pii/compare', async (req, res) => {
+  const token = resolveCustomerToken(req)
+  if (!token) {
     res.status(401).json({ error: 'not logged in — call /api/stage2/login first' })
     return
   }
   try {
     const [raw, masked] = await Promise.all([
       callTool(config.orderDbMcpDirectUrl, 'get_order', { order_id: 'ORD-1001' }),
-      callTool(config.orderDbMcpUrl, 'get_order', { order_id: 'ORD-1001' }, currentCustomerToken),
+      callTool(config.orderDbMcpUrl, 'get_order', { order_id: 'ORD-1001' }, token),
     ])
     res.json({ raw, masked })
   } catch (err) {
@@ -500,7 +520,8 @@ let pendingCarrierElicitation: PendingElicitation | null = null
 // the STS's own management API so the frontend can drive a real consent
 // popup, rather than simulating the gate.
 app.post('/api/stage9/link-carrier', async (req, res) => {
-  if (!currentCustomerToken) {
+  const token = resolveCustomerToken(req)
+  if (!token) {
     res.status(401).json({ error: 'not logged in — call /api/stage2/login first' })
     return
   }
@@ -514,12 +535,12 @@ app.post('/api/stage9/link-carrier', async (req, res) => {
       config.carrierMcpUrl,
       'link_carrier_account',
       { order_id: orderId },
-      currentCustomerToken,
+      token,
     )
     res.json({ kind: 'linked', result })
   } catch (err) {
     if (err instanceof McpHttpError) {
-      const pending = (await listElicitations(config.elicitationStsUrl, currentCustomerToken)).find(
+      const pending = (await listElicitations(config.elicitationStsUrl, token)).find(
         (e) => e.status === 'pending',
       )
       if (pending) {
@@ -538,7 +559,8 @@ app.post('/api/stage9/link-carrier', async (req, res) => {
 // exchange server-side; a successful retry here is the actual proof, not a
 // simulated "looks done" state.
 app.post('/api/stage9/complete', async (req, res) => {
-  if (!currentCustomerToken) {
+  const token = resolveCustomerToken(req)
+  if (!token) {
     res.status(401).json({ error: 'not logged in — call /api/stage2/login first' })
     return
   }
@@ -553,17 +575,12 @@ app.post('/api/stage9/complete', async (req, res) => {
     return
   }
   try {
-    await completeElicitation(
-      config.elicitationStsUrl,
-      currentCustomerToken,
-      pendingCarrierElicitation,
-      code,
-    )
+    await completeElicitation(config.elicitationStsUrl, token, pendingCarrierElicitation, code)
     const result = await callTool(
       config.carrierMcpUrl,
       'link_carrier_account',
       { order_id: orderId },
-      currentCustomerToken,
+      token,
     )
     pendingCarrierElicitation = null
     res.json({ kind: 'linked', result })
@@ -612,8 +629,9 @@ const MULTICLUSTER_DEMO_MESSAGE =
   'on 2026-07-15, delivered by FastShip (tracking FS100200), for customer CUST-100. ' +
   'Please process the full refund.'
 
-app.get('/api/stage10/balance', async (_req, res) => {
-  if (!currentCustomerToken) {
+app.get('/api/stage10/balance', async (req, res) => {
+  const token = resolveCustomerToken(req)
+  if (!token) {
     res.status(401).json({ error: 'not logged in — call /api/stage2/login first' })
     return
   }
@@ -622,7 +640,7 @@ app.get('/api/stage10/balance', async (_req, res) => {
       config.loyaltyMcpUrl,
       'get_loyalty_balance',
       { customer_id: MULTICLUSTER_DEMO_CUSTOMER_ID },
-      currentCustomerToken,
+      token,
     )
     res.json({ result })
   } catch (err) {
@@ -630,8 +648,9 @@ app.get('/api/stage10/balance', async (_req, res) => {
   }
 })
 
-app.post('/api/stage10/process-return', async (_req, res) => {
-  if (!currentCustomerToken) {
+app.post('/api/stage10/process-return', async (req, res) => {
+  const token = resolveCustomerToken(req)
+  if (!token) {
     res.status(401).json({ error: 'not logged in — call /api/stage2/login first' })
     return
   }
@@ -640,18 +659,14 @@ app.post('/api/stage10/process-return', async (_req, res) => {
       config.loyaltyMcpUrl,
       'get_loyalty_balance',
       { customer_id: MULTICLUSTER_DEMO_CUSTOMER_ID },
-      currentCustomerToken,
+      token,
     )
-    const result = await sendMessage(
-      config.supportTriageUrl,
-      MULTICLUSTER_DEMO_MESSAGE,
-      currentCustomerToken,
-    )
+    const result = await sendMessage(config.supportTriageUrl, MULTICLUSTER_DEMO_MESSAGE, token)
     const balanceAfter = await callTool(
       config.loyaltyMcpUrl,
       'get_loyalty_balance',
       { customer_id: MULTICLUSTER_DEMO_CUSTOMER_ID },
-      currentCustomerToken,
+      token,
     )
     res.json({
       replyText: result.replyText,
@@ -958,13 +973,14 @@ function buildGrafanaExploreUrl(logql: string, startMs: number, endMs: number): 
   return `${config.grafanaUrl}/explore?${params.toString()}`
 }
 
-app.get('/api/stage8/session-summary', async (_req, res) => {
-  if (!currentCustomerToken) {
+app.get('/api/stage8/session-summary', async (req, res) => {
+  const token = resolveCustomerToken(req)
+  if (!token) {
     res.status(401).json({ error: 'not logged in — call /api/stage2/login first' })
     return
   }
   try {
-    const claims = decodeJwtClaims(currentCustomerToken)
+    const claims = decodeJwtClaims(token)
     const sub = String(claims.sub ?? '')
     const endMs = Date.now()
     const startMs = endMs - SESSION_WINDOW_MINUTES * 60_000

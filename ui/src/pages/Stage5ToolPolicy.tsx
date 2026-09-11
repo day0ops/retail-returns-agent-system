@@ -342,7 +342,7 @@ export function Stage5ToolPolicy({ onNext, onBack }: StageProps) {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Code2 className="size-4" /> Progressive disclosure
+              <Code2 className="size-4" /> Scaling tool catalogs
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Info className="text-muted-foreground size-3.5" />
