@@ -170,6 +170,32 @@ app.post('/api/stage2/login', async (req, res) => {
   }
 })
 
+// Stage 1's Logout button. Clears this app's own session state -- when accessed
+// via the real gate, ext-auth-service's logoutPath intercepts the follow-up
+// navigation to /logout before it ever reaches this app, so that's what actually
+// ends the Keycloak SSO session; this endpoint only clears what ext-auth-service
+// has no visibility into (this BFF's own in-memory identity/session state).
+function clearSessionState() {
+  currentCustomerToken = null
+  budgetCustomerTokens.customer1 = null
+  budgetCustomerTokens.customer2 = null
+  pendingElicitation = null
+  pendingCarrierElicitation = null
+}
+
+app.post('/api/logout', (_req, res) => {
+  clearSessionState()
+  res.json({ ok: true })
+})
+
+// Local/dev fallback -- with no OIDC gate in front (e.g. port-forward straight to
+// this Service), ext-auth-service never intercepts logoutPath, so the frontend's
+// navigation to /logout lands here instead.
+app.get('/logout', (_req, res) => {
+  clearSessionState()
+  res.redirect('/')
+})
+
 app.post('/api/stage2/ask', async (req, res) => {
   if (!currentCustomerToken) {
     res.status(401).json({ error: 'not logged in — call /api/stage2/login first' })
