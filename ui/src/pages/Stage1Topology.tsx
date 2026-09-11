@@ -15,6 +15,18 @@ import type { StageProps } from '@/pages/stage-props'
  * telemetry stage exists.
  */
 export function Stage1Topology({ onNext, onBack }: StageProps) {
+  // Clears this app's own cached identity first, then navigates to /logout so
+  // agentgateway's ExtAuth (when a gate is actually in front of this app) can end
+  // the real Keycloak SSO session server-side before landing back here. Falls
+  // through to this app's own /logout fallback when there's no gate (local/dev).
+  async function handleLogout() {
+    try {
+      await fetch('/api/logout', { method: 'POST' })
+    } finally {
+      window.location.href = '/logout'
+    }
+  }
+
   return (
     <div className="mx-auto flex min-h-svh max-w-5xl flex-col items-center gap-12 px-6 py-16">
       <div className="flex w-full items-start justify-between">
@@ -126,7 +138,12 @@ export function Stage1Topology({ onNext, onBack }: StageProps) {
 
       <ComponentBreakdown />
 
-      <StageFooterNav onBack={onBack} onNext={onNext} nextLabel="Next: Identity & token exchange" />
+      <StageFooterNav
+        onBack={onBack}
+        onNext={onNext}
+        onLogout={handleLogout}
+        nextLabel="Next: Identity & token exchange"
+      />
     </div>
   )
 }
