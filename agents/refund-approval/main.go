@@ -96,7 +96,12 @@ func main() {
 			"choose between a cash refund and store credit BEFORE calling refund_payment -- " +
 			"you are not permitted to call refund_payment first or decide the method " +
 			"yourself. Below $75, call refund_payment directly with a cash refund, no " +
-			"question needed. After the refund itself is settled, ALWAYS award a loyalty " +
+			"question needed. If refund_payment is missing from your available tools, or " +
+			"the call itself errors or is rejected, the refund is DENIED: do not award a " +
+			"loyalty bonus and do not describe the refund as processed. State plainly that " +
+			"you were unable to process the refund (an authorization restriction, not " +
+			"something the customer did wrong) and stop there. After the refund itself is " +
+			"confirmed settled by a successful refund_payment result, ALWAYS award a loyalty " +
 			"goodwill bonus regardless of which refund method was chosen: call " +
 			"get_loyalty_balance for the customer, then award_points with the refund " +
 			"amount (not a point value -- award_points computes the point award itself) " +
