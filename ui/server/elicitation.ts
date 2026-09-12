@@ -83,3 +83,18 @@ export async function completeElicitation(
     throw new Error(`elicitation completion failed: HTTP ${res.status} ${await res.text()}`)
   }
 }
+
+// Deletes a banked elicitation (customer-scoped -- same bearer token as every other call
+// here, no elevated privilege) so the next link_carrier_account attempt re-triggers the
+// real gate + carrier-portal consent screen instead of silently reusing the banked token.
+// Best-effort by design: a demo re-run showing "already linked" is a minor cosmetic miss,
+// not worth failing the customer-visible request over.
+export async function deleteElicitation(stsUrl: string, bearerToken: string, id: number) {
+  const res = await fetch(`${stsUrl}/elicitations/${id}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${bearerToken}` },
+  })
+  if (!res.ok) {
+    throw new Error(`elicitation deletion failed: HTTP ${res.status} ${await res.text()}`)
+  }
+}

@@ -4,7 +4,6 @@ import { ArrowRight, ChevronDown, ChevronUp, ExternalLink, Link2, Truck } from '
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { ThemeToggle } from '@/components/theme-toggle'
 import { StageFooterNav } from '@/components/stage-footer-nav'
 import { SequenceDiagram, type SequenceStep } from '@/components/sequence-diagram'
 import type { StageProps } from '@/pages/stage-props'
@@ -147,7 +146,6 @@ export function Stage9CarrierElicitation({ onNext, onBack }: StageProps) {
             Distinct from Stage 2's identity exchange and Stage 4's agent-level question.
           </p>
         </div>
-        <ThemeToggle />
       </div>
 
       <div className="flex flex-col gap-2">

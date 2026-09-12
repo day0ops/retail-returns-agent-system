@@ -14,7 +14,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { ThemeToggle } from '@/components/theme-toggle'
 import { StageFooterNav } from '@/components/stage-footer-nav'
 import { cn } from '@/lib/utils'
 import type { StageProps } from '@/pages/stage-props'
@@ -183,7 +182,6 @@ export function Stage5ToolPolicy({ onNext, onBack }: StageProps) {
             order-db-mcp's catalog grows.
           </p>
         </div>
-        <ThemeToggle />
       </div>
 
       <motion.div
