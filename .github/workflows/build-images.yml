@@ -180,7 +180,8 @@ jobs:
           if [ -n "$GIT_TAG" ]; then
             TAGS+=(-t "$IMG:$GIT_TAG")
           fi
-          docker build "${TAGS[@]}" ui
+          VERSION="${GIT_TAG:-$SHORT_SHA}"
+          docker build "${TAGS[@]}" --build-arg "VERSION=$VERSION" ui
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             docker push "$IMG:$SHORT_SHA"
             docker push "$IMG:latest"
