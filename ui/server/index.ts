@@ -12,7 +12,12 @@ import {
   type PendingQuestion,
 } from './a2a.js'
 import { listTools, callTool, McpHttpError } from './mcp.js'
-import { listElicitations, completeElicitation, type PendingElicitation } from './elicitation.js'
+import {
+  listElicitations,
+  completeElicitation,
+  deleteElicitation,
+  type PendingElicitation,
+} from './elicitation.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -523,6 +528,25 @@ app.get('/api/stage-pii/compare', async (req, res) => {
 // currentCustomerToken -- one presenter, one pending carrier link at a time.
 let pendingCarrierElicitation: PendingElicitation | null = null
 
+// Stage 9: clears a completed elicitation right after a successful link (customer-scoped,
+// same bearer token as every other call here -- no elevated privilege) so the *next*
+// "Link carrier account" attempt re-triggers the real gate + carrier-portal consent screen
+// for a fresh demo walkthrough, instead of silently reusing the banked token. Best-effort:
+// a failure here shouldn't affect the customer-visible link result. `hint` skips the list
+// call when the caller already knows which record just completed.
+async function clearCompletedCarrierElicitation(token: string, hint?: PendingElicitation) {
+  try {
+    const target =
+      hint ??
+      (await listElicitations(config.elicitationStsUrl, token)).find(
+        (e) => e.status === 'completed',
+      )
+    if (target) await deleteElicitation(config.elicitationStsUrl, token, target.id)
+  } catch {
+    // best-effort cleanup only
+  }
+}
+
 // Stage 9: attempts to link the customer's carrier account. The first call
 // for a customer who hasn't yet consented is gated by agentgateway itself
 // (entTokenExchange.solo, real HTTP 400 before the request reaches
@@ -547,6 +571,9 @@ app.post('/api/stage9/link-carrier', async (req, res) => {
       { order_id: orderId },
       token,
     )
+    // A banked token from an earlier link let this succeed without the gate firing at
+    // all -- clear it too, so a repeat click during the next walkthrough re-gates.
+    await clearCompletedCarrierElicitation(token)
     res.json({ kind: 'linked', result })
   } catch (err) {
     if (err instanceof McpHttpError) {
@@ -592,6 +619,7 @@ app.post('/api/stage9/complete', async (req, res) => {
       { order_id: orderId },
       token,
     )
+    await clearCompletedCarrierElicitation(token, pendingCarrierElicitation)
     pendingCarrierElicitation = null
     res.json({ kind: 'linked', result })
   } catch (err) {

@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
+import { LogOut } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { ThemeToggle } from '@/components/theme-toggle'
 import { TourProgress } from '@/components/tour-progress'
 import { Stage1Topology } from '@/pages/Stage1Topology'
 import { Stage2TokenExchange } from '@/pages/Stage2TokenExchange'
@@ -49,12 +52,33 @@ function App() {
   )
 }
 
+// Logout + theme toggle live here (rendered once, on every stage) rather than each
+// stage page rendering its own -- previously only Stage 1's footer had a logout button,
+// so leaving the tour meant navigating all the way back to the first stage.
 function AppHeader() {
+  // Clears this app's own cached identity first, then navigates to /logout so
+  // agentgateway's ExtAuth (when a gate is actually in front of this app) can end
+  // the real Keycloak SSO session server-side before landing back here. Falls
+  // through to this app's own /logout fallback when there's no gate (local/dev).
+  async function handleLogout() {
+    try {
+      await fetch('/api/logout', { method: 'POST' })
+    } finally {
+      window.location.href = '/logout'
+    }
+  }
+
   return (
-    <div className="mx-auto w-full max-w-5xl px-6 pt-6">
+    <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 pt-6">
       <p className="text-muted-foreground text-xs font-semibold tracking-widest uppercase">
         Retail Returns Agent System
       </p>
+      <div className="flex items-center gap-2">
+        <ThemeToggle />
+        <Button onClick={handleLogout} variant="ghost" size="sm">
+          <LogOut className="size-3.5" /> Logout
+        </Button>
+      </div>
     </div>
   )
 }

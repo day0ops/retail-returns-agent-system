@@ -4,7 +4,6 @@ import { ArrowRight, HelpCircle, PauseCircle } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { ThemeToggle } from '@/components/theme-toggle'
 import { StageFooterNav } from '@/components/stage-footer-nav'
 import type { StageProps } from '@/pages/stage-props'
 
@@ -104,7 +103,6 @@ export function Stage4Elicitation({ onNext, onBack }: StageProps) {
             answered.
           </p>
         </div>
-        <ThemeToggle />
       </div>
 
       <motion.div

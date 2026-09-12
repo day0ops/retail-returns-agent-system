@@ -4,7 +4,6 @@ import { Coins, DollarSign, ShieldAlert, ShieldCheck } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { ThemeToggle } from '@/components/theme-toggle'
 import { StageFooterNav } from '@/components/stage-footer-nav'
 import { PolicySpecViewer } from '@/components/policy-spec-viewer'
 import type { StageProps } from '@/pages/stage-props'
@@ -100,7 +99,6 @@ export function Stage6Budget({ onNext, onBack }: StageProps) {
             agentgateway), two outcomes when the cap is crossed.
           </p>
         </div>
-        <ThemeToggle />
       </div>
 
       <PolicySpecViewer endpoint="/api/stage-budget/policy-spec" toggleLabel="budget policy spec" />

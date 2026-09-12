@@ -3,7 +3,6 @@ import { motion } from 'framer-motion'
 import { Activity, ExternalLink, MessageSquare, Wrench } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ThemeToggle } from '@/components/theme-toggle'
 import { StageFooterNav } from '@/components/stage-footer-nav'
 import { TraceWaterfallCard, type TraceWaterfall } from '@/components/trace-waterfall'
 import type { StageProps } from '@/pages/stage-props'
@@ -57,7 +56,6 @@ export function Stage8Telemetry({ onNext, onBack }: StageProps) {
             and Tempo. This recap, including the waterfalls below, is queried live.
           </p>
         </div>
-        <ThemeToggle />
       </div>
 
       <motion.div

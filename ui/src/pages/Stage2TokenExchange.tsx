@@ -4,7 +4,6 @@ import { ArrowRight, ChevronDown, ChevronUp, KeyRound, LogIn, MessageCircle } fr
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { ThemeToggle } from '@/components/theme-toggle'
 import { StageFooterNav } from '@/components/stage-footer-nav'
 import { SequenceDiagram, type SequenceStep } from '@/components/sequence-diagram'
 import type { StageProps } from '@/pages/stage-props'
@@ -100,7 +99,6 @@ export function Stage2TokenExchange({ onNext, onBack }: StageProps) {
             received.
           </p>
         </div>
-        <ThemeToggle />
       </div>
 
       <div className="flex flex-col gap-2">

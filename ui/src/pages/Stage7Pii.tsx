@@ -3,7 +3,6 @@ import { motion } from 'framer-motion'
 import { Bot, Database, Eye, EyeOff, ShieldCheck } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ThemeToggle } from '@/components/theme-toggle'
 import { TopologyNode } from '@/components/topology-node'
 import { StageFooterNav } from '@/components/stage-footer-nav'
 import { PolicySpecViewer } from '@/components/policy-spec-viewer'
@@ -71,7 +70,6 @@ export function Stage7Pii({ onNext, onBack }: StageProps) {
             CheckResponse hook).
           </p>
         </div>
-        <ThemeToggle />
       </div>
 
       <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-stretch">
