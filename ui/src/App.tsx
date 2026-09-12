@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { TourProgress } from '@/components/tour-progress'
 import { Stage1Topology } from '@/pages/Stage1Topology'
@@ -44,6 +44,7 @@ function App() {
         onNext={stageIndex < STAGES.length - 1 ? () => setStageIndex(stageIndex + 1) : undefined}
         onBack={stageIndex > 0 ? () => setStageIndex(stageIndex - 1) : undefined}
       />
+      <AppFooter />
     </TooltipProvider>
   )
 }
@@ -54,6 +55,29 @@ function AppHeader() {
       <p className="text-muted-foreground text-xs font-semibold tracking-widest uppercase">
         Retail Returns Agent System
       </p>
+    </div>
+  )
+}
+
+// Shows which build is actually running -- the git tag on a release build,
+// short SHA otherwise (see ui/Dockerfile and build-images.yml), 'dev' for
+// local dev with no image build at all. Silent on fetch failure: a missing
+// version string isn't worth surfacing an error over.
+function AppFooter() {
+  const [version, setVersion] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch('/api/version')
+      .then((res) => res.json())
+      .then((body) => setVersion(body.version))
+      .catch(() => {})
+  }, [])
+
+  if (!version) return null
+
+  return (
+    <div className="mx-auto w-full max-w-5xl px-6 py-4 text-center">
+      <p className="text-muted-foreground text-[11px]">{version}</p>
     </div>
   )
 }

@@ -157,8 +157,18 @@ function resolveCustomerToken(req: express.Request): string | null {
   return currentCustomerToken
 }
 
+// Set by the Docker image's VERSION build-arg (the git tag on a release build,
+// short SHA otherwise -- see ui/Dockerfile and build-images.yml). Not part of
+// `config`'s requiredEnv() validation: local dev has no image build at all, so
+// it must default gracefully instead of failing startup.
+const APP_VERSION = process.env.APP_VERSION || 'dev'
+
 const app = express()
 app.use(express.json())
+
+app.get('/api/version', (_req, res) => {
+  res.json({ version: APP_VERSION })
+})
 
 app.post('/api/stage2/login', async (req, res) => {
   try {
