@@ -18,17 +18,31 @@ interface SequenceDiagramProps {
  * in order down the page so the actual temporal flow of a request reads
  * clearly, not just a static "who talks to whom".
  */
+// Rough (deliberately generous) estimate of a label's rendered width at this
+// diagram's fontSize/weight (11px, 600) -- avoids measuring text in the DOM
+// just to lay out an SVG. Each participant gets its own fixed-width column
+// sized off the longest label, rather than splitting one fixed total width
+// evenly: a long name (e.g. "loyalty-rewards-mcp (west)") previously got
+// centered a fixed 48px from the SVG's own edge regardless of its length,
+// clipping past the SVG's boundary (which clips its own content by default,
+// so the surrounding overflow-x-auto container can't help). Growing the
+// total width with participant count/label length instead relies on that
+// same overflow-x-auto to scroll, rather than fighting to cram everything
+// into one fixed 640px viewBox.
+const CHAR_WIDTH = 6.8
+const MIN_COL_WIDTH = 140
+const COL_PADDING = 24
+
 export function SequenceDiagram({ participants, steps }: SequenceDiagramProps) {
-  const width = 640
+  const colWidth = Math.max(
+    MIN_COL_WIDTH,
+    ...participants.map((p) => p.length * CHAR_WIDTH + COL_PADDING),
+  )
+  const width = participants.length * colWidth
   const rowHeight = 42
   const topPad = 50
   const height = topPad + steps.length * rowHeight + 16
-  const colX = (name: string) => {
-    const i = participants.indexOf(name)
-    return participants.length === 1
-      ? width / 2
-      : 48 + (i / (participants.length - 1)) * (width - 96)
-  }
+  const colX = (name: string) => colWidth * (participants.indexOf(name) + 0.5)
 
   return (
     <motion.div
